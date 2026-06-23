@@ -3,10 +3,15 @@ package cli
 import "github.com/kunchenguid/no-mistakes/internal/telemetry"
 
 type headlessSurface struct {
-	name      string
-	short     string
-	long      string
+	name  string
+	short string
+	long  string
+	// cancelSub is the cancel subcommand verb (e.g. "abort", "cancel").
 	cancelSub string
+	// cancelledKey is the output key that reports the cancel result, kept in the
+	// surface's own vocabulary so `gate cancel` reports `cancelled` while `axi
+	// abort` reports `aborted`.
+	cancelledKey string
 }
 
 var (
@@ -16,7 +21,8 @@ var (
 		long: "Agent eXperience Interface for no-mistakes. Prints token-efficient TOON\n" +
 			"to stdout and is driven entirely by flags (no interactive prompts).\n" +
 			"Running `no-mistakes axi` with no subcommand shows the current state.",
-		cancelSub: "abort",
+		cancelSub:    "abort",
+		cancelledKey: "aborted",
 	}
 	gateSurface = headlessSurface{
 		name:  "gate",
@@ -24,7 +30,8 @@ var (
 		long: "Headless gate interface for no-mistakes. Prints machine-readable output\n" +
 			"to stdout and is driven entirely by flags (no interactive prompts).\n" +
 			"Running `no-mistakes gate` with no subcommand shows the current state.",
-		cancelSub: "cancel",
+		cancelSub:    "cancel",
+		cancelledKey: "cancelled",
 	}
 )
 

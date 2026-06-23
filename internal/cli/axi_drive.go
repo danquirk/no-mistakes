@@ -40,10 +40,6 @@ func outcomeFor(status string) string {
 	return control.OutcomeFor(types.RunStatus(status))
 }
 
-func newAxiRunCmd() *cobra.Command {
-	return newHeadlessRunCmd(axiSurface)
-}
-
 func newHeadlessRunCmd(surface headlessSurface) *cobra.Command {
 	var autoYes bool
 	var skipValue string
@@ -81,10 +77,6 @@ func newHeadlessRunCmd(surface headlessSurface) *cobra.Command {
 	cmd.Flags().StringVar(&skipValue, "skip", "", "comma-separated pipeline steps to skip")
 	cmd.Flags().StringVar(&intent, "intent", "", "what the user set out to accomplish (not a description of the diff); used instead of inferring from transcripts (required to start a run)")
 	return cmd
-}
-
-func runAxiRun(cmd *cobra.Command, autoYes bool, skipSteps []types.StepName, intent string) error {
-	return runHeadlessRun(cmd, axiSurface, autoYes, skipSteps, intent)
 }
 
 func runHeadlessRun(cmd *cobra.Command, surface headlessSurface, autoYes bool, skipSteps []types.StepName, intent string) error {
@@ -500,10 +492,6 @@ func successReportHelp(fixes []fixRow) []string {
 	return help
 }
 
-func newAxiRespondCmd() *cobra.Command {
-	return newHeadlessRespondCmd(axiSurface)
-}
-
 func newHeadlessRespondCmd(surface headlessSurface) *cobra.Command {
 	var action, step, findings, instructions, addFinding string
 	var autoYes bool
@@ -548,10 +536,6 @@ type respondArgs struct {
 	instructions string
 	addFinding   string
 	autoYes      bool
-}
-
-func runAxiRespond(cmd *cobra.Command, ra respondArgs) error {
-	return runHeadlessRespond(cmd, axiSurface, ra)
 }
 
 func runHeadlessRespond(cmd *cobra.Command, surface headlessSurface, ra respondArgs) error {
@@ -658,10 +642,6 @@ func gateStatusFor(rv runView, step string) string {
 	return string(types.StepStatusAwaitingApproval)
 }
 
-func newAxiAbortCmd() *cobra.Command {
-	return newHeadlessCancelCmd(axiSurface)
-}
-
 func newHeadlessCancelCmd(surface headlessSurface) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           surface.cancelSub,
@@ -671,18 +651,14 @@ func newHeadlessCancelCmd(surface headlessSurface) *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return trackHeadlessSurface(surface, surface.cancelSub, nil, func() error {
-				return runHeadlessAbort(cmd)
+				return runHeadlessAbort(cmd, surface)
 			})
 		},
 	}
 	return cmd
 }
 
-func runAxiAbort(cmd *cobra.Command) error {
-	return runHeadlessAbort(cmd)
-}
-
-func runHeadlessAbort(cmd *cobra.Command) error {
+func runHeadlessAbort(cmd *cobra.Command, surface headlessSurface) error {
 	ctx := cmd.Context()
 	env, err := openAxiEnv(true)
 	if err != nil {
@@ -699,10 +675,11 @@ func runHeadlessAbort(cmd *cobra.Command) error {
 		return emitError(cmd, 1, fmt.Sprintf("get active run: %v", err))
 	}
 
+	cancelledKey := surface.cancelledKey
 	if active.Run == nil {
-		// Idempotent: nothing to abort is a successful no-op.
+		// Idempotent: nothing to cancel is a successful no-op.
 		emitDoc(cmd,
-			toon.Field{Key: "aborted", Value: false},
+			toon.Field{Key: cancelledKey, Value: false},
 			toon.Field{Key: "detail", Value: "no active run (no-op)"},
 		)
 		return nil
@@ -710,10 +687,10 @@ func runHeadlessAbort(cmd *cobra.Command) error {
 
 	var result ipc.CancelRunResult
 	if err := env.client.Call(ipc.MethodCancelRun, &ipc.CancelRunParams{RunID: active.Run.ID}, &result); err != nil {
-		return emitError(cmd, 1, fmt.Sprintf("abort run: %v", err))
+		return emitError(cmd, 1, fmt.Sprintf("%s run: %v", surface.cancelSub, err))
 	}
 	emitDoc(cmd,
-		toon.Field{Key: "aborted", Value: true},
+		toon.Field{Key: cancelledKey, Value: true},
 		toon.Field{Key: "run", Value: active.Run.ID},
 		toon.Field{Key: "branch", Value: active.Run.Branch},
 	)

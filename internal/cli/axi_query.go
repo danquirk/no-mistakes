@@ -22,10 +22,6 @@ import (
 // logTailLines is how many trailing log lines `axi logs` shows without --full.
 const logTailLines = 40
 
-func newAxiStatusCmd() *cobra.Command {
-	return newHeadlessStatusCmd(axiSurface)
-}
-
 func newHeadlessStatusCmd(surface headlessSurface) *cobra.Command {
 	var runID string
 	cmd := &cobra.Command{
@@ -44,10 +40,6 @@ func newHeadlessStatusCmd(surface headlessSurface) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "inspect a specific run ID (default: active or most recent)")
 	return cmd
-}
-
-func runAxiStatus(cmd *cobra.Command, runID string) error {
-	return runHeadlessStatus(cmd, axiSurface, runID)
 }
 
 func runHeadlessStatus(cmd *cobra.Command, surface headlessSurface, runID string) error {
@@ -99,10 +91,6 @@ func noRunLogsHelp(surface headlessSurface) string {
 	return startRunHelp(surface)
 }
 
-func newAxiLogsCmd() *cobra.Command {
-	return newHeadlessLogsCmd(axiSurface)
-}
-
 func newHeadlessLogsCmd(surface headlessSurface) *cobra.Command {
 	var step, runID string
 	var full bool
@@ -126,10 +114,6 @@ func newHeadlessLogsCmd(surface headlessSurface) *cobra.Command {
 	cmd.Flags().StringVar(&runID, "run", "", "run ID (default: active or most recent)")
 	cmd.Flags().BoolVar(&full, "full", false, "show the entire log instead of the tail")
 	return cmd
-}
-
-func runAxiLogs(cmd *cobra.Command, step, runID string, full bool) error {
-	return runHeadlessLogs(cmd, axiSurface, step, runID, full)
 }
 
 func runHeadlessLogs(cmd *cobra.Command, surface headlessSurface, step, runID string, full bool) error {

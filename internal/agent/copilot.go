@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/kunchenguid/no-mistakes/internal/shellenv"
@@ -29,7 +31,13 @@ func (a *copilotAgent) Run(ctx context.Context, opts RunOpts) (*Result, error) {
 func (a *copilotAgent) Close() error { return nil }
 
 func (a *copilotAgent) runOnce(ctx context.Context, opts RunOpts) (*Result, error) {
-	args := a.buildArgs(buildCopilotPrompt(opts.Prompt, opts.JSONSchema))
+	promptPath, err := writeCopilotPromptFile(opts.Prompt, opts.JSONSchema)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(promptPath)
+
+	args := a.buildArgs(shortCopilotPrompt(promptPath))
 	cmd := exec.CommandContext(ctx, a.bin, args...)
 	cmd.Dir = opts.CWD
 	cmd.Env = gitSafeEnv(opts.CWD)
@@ -46,7 +54,7 @@ func (a *copilotAgent) runOnce(ctx context.Context, opts RunOpts) (*Result, erro
 	if opts.OnChunk != nil && text != "" {
 		opts.OnChunk(text)
 	}
-	return finalizeTextResult("copilot", text, opts.JSONSchema, TokenUsage{})
+	return finalizeCopilotResult(text, opts.JSONSchema)
 }
 
 func (a *copilotAgent) buildArgs(prompt string) []string {
@@ -56,6 +64,7 @@ func (a *copilotAgent) buildArgs(prompt string) []string {
 		"-p", prompt,
 		"--allow-all",
 		"--silent",
+		"--no-ask-user",
 		"--no-auto-update",
 		"--no-remote",
 		"--no-remote-export",
@@ -64,6 +73,28 @@ func (a *copilotAgent) buildArgs(prompt string) []string {
 		"--no-color",
 	)
 	return args
+}
+
+func writeCopilotPromptFile(prompt string, schema json.RawMessage) (string, error) {
+	f, err := os.CreateTemp("", "no-mistakes-copilot-prompt-*.md")
+	if err != nil {
+		return "", fmt.Errorf("copilot prompt temp file: %w", err)
+	}
+	path := f.Name()
+	if _, err := f.WriteString(buildCopilotPrompt(prompt, schema)); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return "", fmt.Errorf("copilot prompt temp file write: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", fmt.Errorf("copilot prompt temp file close: %w", err)
+	}
+	return path, nil
+}
+
+func shortCopilotPrompt(promptPath string) string {
+	return "Read the complete no-mistakes task instructions from this file, execute them, and make your final response satisfy any output contract in that file. Do not ask clarification questions. File: " + filepath.Clean(promptPath)
 }
 
 func buildCopilotPrompt(prompt string, schema json.RawMessage) string {
@@ -80,9 +111,64 @@ func buildCopilotPrompt(prompt string, schema json.RawMessage) string {
 		string(pretty)
 }
 
+func finalizeCopilotResult(text string, schema json.RawMessage) (*Result, error) {
+	if text == "" {
+		return nil, fmt.Errorf("copilot returned no text output")
+	}
+	if len(schema) == 0 {
+		return &Result{Text: text}, nil
+	}
+	output, err := parseStructuredTextOutput(text, schema)
+	if err != nil {
+		repaired := repairCopilotWrappedJSON(text)
+		if repaired != text {
+			if output, repairErr := parseStructuredTextOutput(repaired, schema); repairErr == nil {
+				return &Result{Output: output, Text: text}, nil
+			}
+		}
+		return nil, fmt.Errorf("copilot output parse: %w", err)
+	}
+	return &Result{Output: output, Text: text}, nil
+}
+
 func cleanCopilotText(text string) string {
-	text = strings.TrimSpace(text)
-	text = strings.TrimPrefix(text, "● ")
-	text = strings.TrimPrefix(text, "• ")
-	return strings.TrimSpace(text)
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "● ")
+		line = strings.TrimPrefix(line, "• ")
+		lines[i] = line
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func repairCopilotWrappedJSON(text string) string {
+	start := strings.Index(text, "{")
+	end := strings.LastIndex(text, "}")
+	if start < 0 || end <= start {
+		return text
+	}
+	var b strings.Builder
+	b.WriteString(text[:start])
+	inString := false
+	escaped := false
+	for _, r := range text[start : end+1] {
+		switch {
+		case escaped:
+			escaped = false
+			b.WriteRune(r)
+		case r == '\\':
+			escaped = true
+			b.WriteRune(r)
+		case r == '"':
+			inString = !inString
+			b.WriteRune(r)
+		case inString && (r == '\n' || r == '\r'):
+			b.WriteRune(' ')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteString(text[end+1:])
+	return b.String()
 }

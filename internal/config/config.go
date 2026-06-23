@@ -382,6 +382,7 @@ var reservedAgentArgs = map[string]map[string]bool{
 		"--allow-all-urls":   true,
 		"--yolo":             true,
 		"--silent":           true,
+		"--no-ask-user":      true,
 		"--stream":           true,
 		"--output-format":    true,
 		"--no-auto-update":   true,

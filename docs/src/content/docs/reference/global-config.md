@@ -134,7 +134,7 @@ User-supplied flags are inserted ahead of no-mistakes' managed flags, so your ch
 | Agent | Reserved flags |
 |---|---|
 | `claude` | `-p`, `--print`, `--verbose`, `--output-format`, `--json-schema` |
-| `copilot` | `-p`, `--prompt`, `--allow-all`, `--allow-all-tools`, `--allow-all-paths`, `--allow-all-urls`, `--yolo`, `--silent`, `--stream`, `--output-format`, `--no-auto-update`, `--no-remote`, `--no-remote-export`, `--log-level` |
+| `copilot` | `-p`, `--prompt`, `--allow-all`, `--allow-all-tools`, `--allow-all-paths`, `--allow-all-urls`, `--yolo`, `--silent`, `--no-ask-user`, `--stream`, `--output-format`, `--no-auto-update`, `--no-remote`, `--no-remote-export`, `--log-level` |
 | `codex` | `exec`, `--json`, `--color` |
 | `rovodev` | `rovodev`, `serve`, `--disable-session-token` |
 | `opencode` | `serve`, `--hostname`, `--port`, `--print-logs` |

@@ -92,6 +92,7 @@ func TestLoadGlobal_AgentArgsOverride_ReservedArgsRejected(t *testing.T) {
 		{"copilot", "--prompt"},
 		{"copilot", "--allow-all"},
 		{"copilot", "--silent"},
+		{"copilot", "--no-ask-user"},
 		{"copilot", "--stream"},
 		{"copilot", "--output-format"},
 		{"codex", "exec"},

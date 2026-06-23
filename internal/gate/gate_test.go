@@ -25,6 +25,38 @@ func resolveSymlinks(t *testing.T, p string) string {
 	return resolved
 }
 
+func copyDirTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return os.MkdirAll(target, info.Mode())
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			link, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(link, target)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode())
+	})
+}
+
 // setupTestRepo creates a git repo with an origin remote and returns its resolved path.
 func setupTestRepo(t *testing.T) string {
 	t.Helper()
@@ -545,8 +577,8 @@ func TestInitCreatesFreshGateForCopiedWorkingDir(t *testing.T) {
 	}
 
 	copyDir := filepath.Join(filepath.Dir(workDir), "copy")
-	if out, err := exec.Command("cp", "-R", workDir, copyDir).CombinedOutput(); err != nil {
-		t.Fatalf("copy working dir: %v: %s", err, out)
+	if err := copyDirTree(workDir, copyDir); err != nil {
+		t.Fatalf("copy working dir: %v", err)
 	}
 
 	second, created, err := Init(ctx, d, p, copyDir)
@@ -830,7 +862,7 @@ func TestEjectCleansUpWorktrees(t *testing.T) {
 
 	// Create a fake worktree directory to verify cleanup.
 	wtDir := p.WorktreeDir(repo.ID, "fake-run-id")
-	if err := exec.Command("mkdir", "-p", wtDir).Run(); err != nil {
+	if err := os.MkdirAll(wtDir, 0o755); err != nil {
 		t.Fatalf("create worktree dir: %v", err)
 	}
 

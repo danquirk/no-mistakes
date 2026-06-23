@@ -28,7 +28,7 @@ func TestLintStep_FixMode_CommitsChanges(t *testing.T) {
 		},
 	}
 
-	sctx := newTestContextWithDBRecords(t, ag, dir, baseSHA, headSHA, config.Commands{Lint: "true"})
+	sctx := newTestContextWithDBRecords(t, ag, dir, baseSHA, headSHA, config.Commands{Lint: passingCommand()})
 	sctx.Fixing = true
 	sctx.PreviousFindings = previousFindings
 
@@ -85,7 +85,7 @@ func TestLintStep_FixMode_UsesFallbackSummaryWhenStructuredSummaryMalformed(t *t
 		},
 	}
 
-	sctx := newTestContextWithDBRecords(t, ag, dir, baseSHA, headSHA, config.Commands{Lint: "true"})
+	sctx := newTestContextWithDBRecords(t, ag, dir, baseSHA, headSHA, config.Commands{Lint: passingCommand()})
 	sctx.Fixing = true
 
 	step := &LintStep{}

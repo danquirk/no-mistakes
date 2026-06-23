@@ -67,6 +67,10 @@ func lastCommitMessage(t *testing.T, dir string) string {
 	return gitCmd(t, dir, "log", "-1", "--pretty=%s")
 }
 
+func passingCommand() string {
+	return "exit 0"
+}
+
 // gitRepoTemplate holds a cached template repo that setupGitRepo copies from
 // instead of running git init + config + commits each time.
 var gitRepoTemplate struct {

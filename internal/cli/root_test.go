@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -299,7 +300,11 @@ func TestRootYesStopsWaitingForRunWhenContextCanceled(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("executeCmdWithContext(-y) error = %v, want %v", err, context.Canceled)
 	}
-	if elapsed := time.Since(start); elapsed >= time.Second {
-		t.Fatalf("executeCmdWithContext(-y) took %v after cancellation, want under %v", elapsed, time.Second)
+	limit := time.Second
+	if runtime.GOOS == "windows" {
+		limit = 2 * time.Second
+	}
+	if elapsed := time.Since(start); elapsed >= limit {
+		t.Fatalf("executeCmdWithContext(-y) took %v after cancellation, want under %v", elapsed, limit)
 	}
 }

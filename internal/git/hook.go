@@ -10,10 +10,7 @@ import (
 	"strings"
 )
 
-var (
-	runGit     = Run
-	runBareGit = RunBare
-)
+var runBareGit = RunBare
 
 // PostReceiveHookScript returns the shell script for the post-receive hook.
 // The hook notifies the daemon via the CLI so it works across platforms.

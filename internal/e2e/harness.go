@@ -41,14 +41,14 @@ type Harness struct {
 	AgentLog    string // every fake-agent invocation appended here, one JSON per line
 	Scenario    string // optional path to a scenario yaml; empty = built-in default
 
-	agentName         string // claude / codex / opencode
+	agentName         string // claude / copilot / codex / opencode
 	allowRepoCommands *bool  // mirrors SetupOpts.AllowRepoCommands
 }
 
 // SetupOpts controls per-test setup.
 type SetupOpts struct {
-	// Agent picks which fake the harness wires up: "claude", "codex", or
-	// "opencode". The other two binaries are still on PATH (so `auto`
+	// Agent picks which fake the harness wires up: "claude", "copilot", "codex",
+	// or "opencode". The other binaries are still on PATH (so `auto`
 	// detection finds the requested one first via config), but only the
 	// chosen one is exercised.
 	Agent string
@@ -111,7 +111,7 @@ func NewHarness(t *testing.T, opts SetupOpts) *Harness {
 	// shim is a guard rail: BinDir is prepended to PATH, so any stray invocation
 	// of gh by the pipeline (e.g. PR/CI on a misconfigured origin) hits the
 	// fakeagent stub instead of a real, authenticated system gh.
-	for _, name := range []string{"claude", "codex", "opencode", "gh"} {
+	for _, name := range []string{"claude", "copilot", "codex", "opencode", "gh"} {
 		shimPath := fakeAgentShimPath(h.BinDir, name)
 		if err := installFakeAgentShim(fakeBin, shimPath); err != nil {
 			t.Fatalf("install fake %s shim: %v", name, err)

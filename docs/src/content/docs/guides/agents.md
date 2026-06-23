@@ -35,6 +35,7 @@ By default that directory is temporary and local to the machine; repos can opt i
 | Agent | Binary | Protocol |
 |---|---|---|
 | Claude | `claude` | Subprocess per invocation, JSONL streaming |
+| GitHub Copilot CLI | `copilot` | Subprocess per invocation, non-interactive prompt |
 | Codex | `codex` | Subprocess per invocation, JSONL events |
 | Rovo Dev | `acli` | Persistent HTTP server, SSE streaming |
 | OpenCode | `opencode` | Persistent HTTP server, SSE streaming |
@@ -132,16 +133,18 @@ Successful outputs can be `outcome: passed` for a completed run or `outcome: che
 By default, `no-mistakes` resolves `agent: auto` by checking for supported native agents on your `PATH` in this order:
 
 1. `claude`
-2. `codex`
-3. `opencode`
-4. `acli` with `rovodev` support
-5. `pi`
+2. `copilot`
+3. `codex`
+4. `opencode`
+5. `acli` with `rovodev` support
+6. `pi`
 
 The default binary names are:
 
 | Agent | Default binary name |
 |---|---|
 | `claude` | `claude` |
+| `copilot` | `copilot` |
 | `codex` | `codex` |
 | `rovodev` | `acli` |
 | `opencode` | `opencode` |
@@ -155,6 +158,7 @@ Override paths in global config:
 ```yaml
 agent_path_override:
   claude: /Users/you/bin/claude
+  copilot: /Users/you/bin/copilot
   codex: /opt/homebrew/bin/codex
   rovodev: /usr/local/bin/acli
   opencode: /usr/local/bin/opencode
@@ -212,6 +216,14 @@ Use `intent.disabled_readers` to disable specific transcript sources, or set `in
 ## Claude
 
 Spawns a `claude` subprocess for each invocation with `--output-format stream-json`. By default it also adds `--dangerously-skip-permissions`, unless you already set your own Claude permission flag through `agent_args_override`. Reads JSONL events from stdout. Supports native structured output via `--json-schema`.
+
+## GitHub Copilot CLI
+
+Spawns a `copilot` subprocess for each invocation with `-p/--prompt` in
+non-interactive mode. no-mistakes passes `--allow-all`, disables remote export
+and auto-update for the invocation, and requests silent text output. When
+structured output is requested, no-mistakes appends the JSON schema to the prompt
+and parses the final Copilot response.
 
 ## Codex
 

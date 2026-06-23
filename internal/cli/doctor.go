@@ -96,6 +96,7 @@ func newDoctorCmd() *cobra.Command {
 					binary string
 				}{
 					{"claude", "claude"},
+					{"copilot", "copilot"},
 					{"codex", "codex"},
 					{"rovodev", "acli"},
 					{"opencode", "opencode"},

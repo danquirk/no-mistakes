@@ -22,7 +22,7 @@ flowchart TD
   daemon --> db["SQLite state"]
   daemon --> ipc["IPC socket"]
   ipc --> tui["TUI clients"]
-  ipc --> axi["AXI clients"]
+  ipc --> axi["headless gate clients"]
 ```
 
 ## What `no-mistakes init` does
@@ -55,11 +55,11 @@ That is a core design choice, not an implementation detail.
 3. The gate repo's `post-receive` hook notifies the daemon.
 4. The daemon creates a detached worktree for this run.
 5. The pipeline runs in order: `intent -> rebase -> review -> test -> document -> lint -> push -> pr -> ci`.
-6. If a step pauses, you can attach with the TUI or use `no-mistakes axi respond` to approve, fix, skip, or abort.
+6. If a step pauses, you can attach with the TUI or use `no-mistakes gate respond` to approve, fix, skip, or abort.
 7. After local checks pass, the push step forwards the branch to the configured push target and the PR step creates or updates the pull request.
    For GitHub fork routing, the push target is the fork and the PR base repository is the parent from `origin`.
 8. The CI step keeps watching the open PR until it is merged or closed, and can auto-fix failures or merge conflicts when supported.
-   While it watches, the TUI and terminal title surface a `Checks passed` signal once checks are green and the PR is mergeable, and `no-mistakes axi` returns `outcome: checks-passed` with instructions to summarize the run and list any pipeline fixes, so agents stop and ask you to review and merge it.
+   While it watches, the TUI and terminal title surface a `Checks passed` signal once checks are green and the PR is mergeable, and `no-mistakes gate` returns `outcome: checks-passed` with instructions to summarize the run and list any pipeline fixes, so agents stop and ask you to review and merge it.
 
 **Key design decisions:**
 
@@ -139,7 +139,7 @@ branch, marking the remaining steps as skipped.
 
 ### IPC
 
-Communication between the CLI and daemon uses JSON-RPC 2.0 over the Unix socket. The `subscribe` method streams real-time events (step progress, log chunks, findings) to the TUI, while the `axi` commands use request/response IPC for non-interactive agent control.
+Communication between the CLI and daemon uses JSON-RPC 2.0 over the Unix socket. The `subscribe` method streams real-time events (step progress, log chunks, findings) to the TUI, while the `gate` commands use request/response IPC for non-interactive agent control.
 
 ### Database
 
@@ -149,7 +149,7 @@ rounds, and derived intent summaries. Step rounds record each execution attempt
 IDs, whether the selection came from the user or auto-fix filtering, the merged
 finding payload actually sent to the fix agent for that round, and the one-line
 fix summary for fix rounds. That merged payload can include per-finding user
-notes and user-authored findings from the TUI or AXI interface. Intent stores
+notes and user-authored findings from the TUI or gate interface. Intent stores
 the summary, source, session ID, and match score on each run when transcript
 matching is used, plus cached summaries for matching transcript sessions. An
 agent-supplied AXI intent is stored directly on the run. Raw transcript text is

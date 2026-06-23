@@ -319,7 +319,7 @@ func migrateGateConfigs(ctx context.Context, p *paths.Paths) {
 		if _, err := git.RefreshManagedPostReceiveHook(bareDir); err != nil {
 			slog.Warn("refresh gate post-receive hook failed", "bare", bareDir, "error", err)
 		}
-		if _, err := git.Run(ctx, bareDir, "config", "receive.advertisePushOptions", "true"); err != nil {
+		if _, err := git.RunBare(ctx, bareDir, "config", "receive.advertisePushOptions", "true"); err != nil {
 			slog.Warn("enable gate push options failed", "bare", bareDir, "error", err)
 		}
 		if err := git.IsolateHooksPath(ctx, bareDir); err != nil {

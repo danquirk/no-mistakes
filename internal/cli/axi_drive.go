@@ -11,7 +11,7 @@ import (
 
 	toon "github.com/toon-format/toon-go"
 
-	"github.com/kunchenguid/no-mistakes/internal/cimonitor"
+	"github.com/kunchenguid/no-mistakes/internal/control"
 	"github.com/kunchenguid/no-mistakes/internal/gate"
 	"github.com/kunchenguid/no-mistakes/internal/git"
 	"github.com/kunchenguid/no-mistakes/internal/ipc"
@@ -32,29 +32,19 @@ const triggerWaitTimeout = 5 * time.Second
 
 // terminalStatus reports whether a run has reached a final state.
 func terminalStatus(status string) bool {
-	switch types.RunStatus(status) {
-	case types.RunCompleted, types.RunFailed, types.RunCancelled:
-		return true
-	default:
-		return false
-	}
+	return control.TerminalStatus(types.RunStatus(status))
 }
 
 // outcomeFor maps a terminal run status onto an agent-facing outcome word.
 func outcomeFor(status string) string {
-	switch types.RunStatus(status) {
-	case types.RunCompleted:
-		return "passed"
-	case types.RunFailed:
-		return "failed"
-	case types.RunCancelled:
-		return "cancelled"
-	default:
-		return status
-	}
+	return control.OutcomeFor(types.RunStatus(status))
 }
 
 func newAxiRunCmd() *cobra.Command {
+	return newHeadlessRunCmd(axiSurface)
+}
+
+func newHeadlessRunCmd(surface headlessSurface) *cobra.Command {
 	var autoYes bool
 	var skipValue string
 	var intent string
@@ -73,7 +63,7 @@ func newAxiRunCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return trackAxiSurface("axi-run", "/axi/run", telemetry.Fields{
+			return trackHeadlessSurface(surface, "run", telemetry.Fields{
 				"auto_yes":   autoYes,
 				"has_intent": strings.TrimSpace(intent) != "",
 				"has_skip":   strings.TrimSpace(skipValue) != "",
@@ -83,7 +73,7 @@ func newAxiRunCmd() *cobra.Command {
 					return emitError(cmd, 2, err.Error(),
 						"Valid steps: intent, rebase, review, test, document, lint, push, pr, ci")
 				}
-				return runAxiRun(cmd, autoYes, skipSteps, intent)
+				return runHeadlessRun(cmd, surface, autoYes, skipSteps, intent)
 			})
 		},
 	}
@@ -94,6 +84,10 @@ func newAxiRunCmd() *cobra.Command {
 }
 
 func runAxiRun(cmd *cobra.Command, autoYes bool, skipSteps []types.StepName, intent string) error {
+	return runHeadlessRun(cmd, axiSurface, autoYes, skipSteps, intent)
+}
+
+func runHeadlessRun(cmd *cobra.Command, surface headlessSurface, autoYes bool, skipSteps []types.StepName, intent string) error {
 	ctx := cmd.Context()
 	env, err := openAxiEnv(true)
 	if err != nil {
@@ -122,7 +116,7 @@ func runAxiRun(cmd *cobra.Command, autoYes bool, skipSteps []types.StepName, int
 		// from transcripts. Reattaching to an in-flight run does not need it.
 		if strings.TrimSpace(intent) == "" {
 			return emitError(cmd, 2, "--intent is required to start a run",
-				`Pass what the user set out to accomplish: no-mistakes axi run --intent "the user's goal"`)
+				`Pass what the user set out to accomplish: `+surface.command("run")+` --intent "the user's goal"`)
 		}
 		// Starting a fresh run: apply the same pre-flight the human wizard
 		// enforces, but as structured errors the agent acts on rather than
@@ -143,7 +137,7 @@ func runAxiRun(cmd *cobra.Command, autoYes bool, skipSteps []types.StepName, int
 	if err != nil {
 		return emitError(cmd, 1, fmt.Sprintf("drive run: %v", err))
 	}
-	return renderDriveResult(cmd, run, ciReady)
+	return renderDriveResult(cmd, surface, run, ciReady)
 }
 
 // activeRunID returns the ID of a non-terminal run for branch and head, or "" if none.
@@ -156,18 +150,11 @@ func activeRunID(env *axiEnv, branch, headSHA string) string {
 }
 
 func activeRunIDForHead(active *ipc.GetActiveRunResult, headSHA string) string {
-	run := activeRunInfoForHead(active.Run, headSHA)
-	if run == nil {
-		return ""
-	}
-	return run.ID
+	return control.ActiveRunIDForHead(active, headSHA)
 }
 
 func activeRunInfoForHead(run *ipc.RunInfo, headSHA string) *ipc.RunInfo {
-	if run == nil || terminalStatus(string(run.Status)) || run.HeadSHA != headSHA {
-		return nil
-	}
-	return run
+	return control.ActiveRunInfoForHead(run, headSHA)
 }
 
 // preflightGuard returns an emitter for the first unmet pre-flight condition
@@ -334,19 +321,19 @@ func driveRun(ctx context.Context, progress io.Writer, client *ipc.Client, runID
 
 // ciReadyToMerge reports whether the CI step is actively monitoring and its logs
 // show all checks have passed, meaning the PR is ready for a human to merge. It
-// reads CI state through the same parser the TUI uses (see cimonitor) so the two
+// reads CI state through the same parser the TUI uses so the two
 // surfaces never disagree about when a run is "done" from the agent's view.
 func ciReadyToMerge(rv runView, ciLogs []string) bool {
 	for _, s := range rv.Steps {
-		if s.Name == string(types.StepCI) {
-			return s.Status == string(types.StepStatusRunning) && cimonitor.ChecksPassed(ciLogs)
+		if control.CIReadyToMerge(s.Name, s.Status, ciLogs) {
+			return true
 		}
 	}
 	return false
 }
 
 // ciLogReader returns a reader of the CI step's log lines for a run, sourced
-// from the same on-disk log the daemon writes and `axi logs` reads.
+// from the same on-disk log the daemon writes and headless log commands read.
 func ciLogReader(p *paths.Paths) func(string) []string {
 	return func(runID string) []string {
 		data, err := os.ReadFile(filepath.Join(p.RunLogDir(runID), string(types.StepCI)+".log"))
@@ -365,23 +352,7 @@ func ciLogReader(p *paths.Paths) func(string) []string {
 // findings, or actionable findings that carry no IDs (which a fix would resolve
 // to zero selections) are approved.
 func gateResolution(gate stepView, alreadyFixed bool) (types.ApprovalAction, []string) {
-	if alreadyFixed || gate.Status == string(types.StepStatusFixReview) {
-		return types.ActionApprove, nil
-	}
-	parsed, err := types.ParseFindingsJSON(gate.FindingsJSON)
-	if err != nil || !types.HasActionableFindings(parsed) {
-		return types.ActionApprove, nil
-	}
-	ids := make([]string, 0, len(parsed.Items))
-	for _, f := range parsed.Items {
-		if f.ID != "" {
-			ids = append(ids, f.ID)
-		}
-	}
-	if len(ids) == 0 {
-		return types.ActionApprove, nil
-	}
-	return types.ActionFix, ids
+	return control.GateResolution(gate.Status, gate.FindingsJSON, alreadyFixed)
 }
 
 // waitStepLeavesGate blocks until the named step's status changes away from the
@@ -459,7 +430,7 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 // passed, exit 1 when blocked, failed, or cancelled). Successful outcomes also
 // carry the fixes the pipeline applied and reporting instructions, so the agent
 // closes the loop with the user instead of stopping at "it passed".
-func renderDriveResult(cmd *cobra.Command, run *ipc.RunInfo, ciReady bool) error {
+func renderDriveResult(cmd *cobra.Command, surface headlessSurface, run *ipc.RunInfo, ciReady bool) error {
 	rv := runViewFromIPC(run)
 	fields := []toon.Field{runObjectField(rv)}
 
@@ -480,7 +451,7 @@ func renderDriveResult(cmd *cobra.Command, run *ipc.RunInfo, ciReady bool) error
 	}
 
 	if gate, ok := rv.awaitingStep(); ok {
-		fields = append(fields, gateFields(gate)...)
+		fields = append(fields, gateFields(gate, surface)...)
 		emitDoc(cmd, fields...)
 		return nil
 	}
@@ -530,6 +501,10 @@ func successReportHelp(fixes []fixRow) []string {
 }
 
 func newAxiRespondCmd() *cobra.Command {
+	return newHeadlessRespondCmd(axiSurface)
+}
+
+func newHeadlessRespondCmd(surface headlessSurface) *cobra.Command {
 	var action, step, findings, instructions, addFinding string
 	var autoYes bool
 
@@ -542,11 +517,11 @@ func newAxiRespondCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return trackAxiSurface("axi-respond", "/axi/respond", telemetry.Fields{
+			return trackHeadlessSurface(surface, "respond", telemetry.Fields{
 				"action":   sanitizeAxiTelemetryAction(action),
 				"auto_yes": autoYes,
 			}, func() error {
-				return runAxiRespond(cmd, respondArgs{
+				return runHeadlessRespond(cmd, surface, respondArgs{
 					action:       action,
 					step:         step,
 					findings:     findings,
@@ -576,6 +551,10 @@ type respondArgs struct {
 }
 
 func runAxiRespond(cmd *cobra.Command, ra respondArgs) error {
+	return runHeadlessRespond(cmd, axiSurface, ra)
+}
+
+func runHeadlessRespond(cmd *cobra.Command, surface headlessSurface, ra respondArgs) error {
 	ctx := cmd.Context()
 
 	act := types.ApprovalAction(strings.TrimSpace(ra.action))
@@ -583,7 +562,7 @@ func runAxiRespond(cmd *cobra.Command, ra respondArgs) error {
 	case types.ActionApprove, types.ActionFix, types.ActionSkip:
 	case "":
 		return emitError(cmd, 2, "--action is required",
-			"Run `no-mistakes axi respond --action approve|fix|skip`")
+			"Run `"+surface.command("respond")+" --action approve|fix|skip`")
 	default:
 		return emitError(cmd, 2, fmt.Sprintf("unknown action %q", ra.action),
 			"Valid actions: approve, fix, skip")
@@ -605,7 +584,7 @@ func runAxiRespond(cmd *cobra.Command, ra respondArgs) error {
 	}
 	if active.Run == nil {
 		return emitError(cmd, 1, "no active run to respond to",
-			"Run `no-mistakes axi run` to start one")
+			"Run `"+surface.command("run")+"` to start one")
 	}
 	runID := active.Run.ID
 
@@ -620,7 +599,7 @@ func runAxiRespond(cmd *cobra.Command, ra respondArgs) error {
 		gate, ok := rv.awaitingStep()
 		if !ok {
 			return emitError(cmd, 1, "no step is awaiting approval",
-				"Run `no-mistakes axi status` to see the run state")
+				"Run `"+surface.command("status")+"` to see the run state")
 		}
 		stepName = types.StepName(gate.Name)
 	}
@@ -632,7 +611,7 @@ func runAxiRespond(cmd *cobra.Command, ra respondArgs) error {
 	if act == types.ActionFix {
 		if len(findingIDs) == 0 && ra.addFinding == "" {
 			return emitError(cmd, 2, "--action fix requires --findings <id,...> or --add-finding <json>",
-				"Run `no-mistakes axi status` to list finding IDs")
+				"Run `"+surface.command("status")+"` to list finding IDs")
 		}
 		if note := strings.TrimSpace(ra.instructions); note != "" && len(findingIDs) > 0 {
 			instructions = make(map[string]string, len(findingIDs))
@@ -664,7 +643,7 @@ func runAxiRespond(cmd *cobra.Command, ra respondArgs) error {
 	if err != nil {
 		return emitError(cmd, 1, fmt.Sprintf("drive run: %v", err))
 	}
-	return renderDriveResult(cmd, final, ciReady)
+	return renderDriveResult(cmd, surface, final, ciReady)
 }
 
 // gateStatusFor returns the current status of step in rv, defaulting to the
@@ -680,15 +659,19 @@ func gateStatusFor(rv runView, step string) string {
 }
 
 func newAxiAbortCmd() *cobra.Command {
+	return newHeadlessCancelCmd(axiSurface)
+}
+
+func newHeadlessCancelCmd(surface headlessSurface) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "abort",
+		Use:           surface.cancelSub,
 		Short:         "Cancel the active pipeline run",
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return trackAxiSurface("axi-abort", "/axi/abort", nil, func() error {
-				return runAxiAbort(cmd)
+			return trackHeadlessSurface(surface, surface.cancelSub, nil, func() error {
+				return runHeadlessAbort(cmd)
 			})
 		},
 	}
@@ -696,6 +679,10 @@ func newAxiAbortCmd() *cobra.Command {
 }
 
 func runAxiAbort(cmd *cobra.Command) error {
+	return runHeadlessAbort(cmd)
+}
+
+func runHeadlessAbort(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 	env, err := openAxiEnv(true)
 	if err != nil {

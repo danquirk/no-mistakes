@@ -116,7 +116,7 @@ func TestWriteGateShape(t *testing.T) {
 			{ID: "review-1", Severity: "warning", File: "main.go", Line: 4, Action: types.ActionAskUser, Description: "calls os.Exit, leaks fd"},
 		}, "1 blocking issue"),
 	}
-	out := axiDoc(gateFields(gate)...)
+	out := axiDoc(gateFields(gate, axiSurface)...)
 
 	for _, want := range []string{
 		"gate:\n",
@@ -257,7 +257,7 @@ func TestPreflightGuardReportsWorkingTreeCheckError(t *testing.T) {
 func TestStatusEmptyHelpIncludesRequiredIntent(t *testing.T) {
 	out := axiDoc(
 		toon.Field{Key: "runs", Value: "0 runs yet in this repository"},
-		toon.Field{Key: "help", Value: []string{startRunHelp()}},
+		toon.Field{Key: "help", Value: []string{startRunHelp(axiSurface)}},
 	)
 	if !strings.Contains(out, "--intent") {
 		t.Fatalf("empty status help must include required --intent, got:\n%s", out)
@@ -265,8 +265,8 @@ func TestStatusEmptyHelpIncludesRequiredIntent(t *testing.T) {
 }
 
 func TestLogsNoRunHelpIncludesRequiredIntent(t *testing.T) {
-	if !strings.Contains(noRunLogsHelp(), "--intent") {
-		t.Fatalf("no-run logs help must include required --intent, got %q", noRunLogsHelp())
+	if !strings.Contains(noRunLogsHelp(axiSurface), "--intent") {
+		t.Fatalf("no-run logs help must include required --intent, got %q", noRunLogsHelp(axiSurface))
 	}
 }
 

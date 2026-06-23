@@ -110,7 +110,7 @@ Or, if the work is already committed on a feature branch, use bare `/no-mistakes
 In task-first mode, the agent inspects scope, preserves unrelated work, commits only the task changes on a feature branch, and passes your task text as `--intent`.
 In validate-only mode, it validates the existing committed work.
 Either way, it applies low-risk fixes itself and stops to relay any finding that needs your judgment.
-It drives the same gate as the TUI through `no-mistakes axi`, a non-interactive command surface that uses flags only, prints TOON on stdout, and exposes the same approval gates through `no-mistakes axi respond`.
+It drives the same gate as the TUI through `no-mistakes gate`, a non-interactive command surface that uses flags only, prints TOON on stdout, and exposes the same approval gates through `no-mistakes gate respond`.
 
 See [Driving no-mistakes as an agent](/no-mistakes/guides/agents/#driving-no-mistakes-as-an-agent) for the full agent workflow.
 

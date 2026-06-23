@@ -53,29 +53,29 @@ If you copy an initialized working directory while the original still exists, th
 Fresh init rolls back gate setup when a required gate or daemon step fails; refresh does not eject a pre-existing gate if daemon startup fails.
 Skill installation is best-effort: if the skill write fails, init reports it and leaves the working gate in place.
 
-## no-mistakes axi
+## no-mistakes gate
 
-Agent eXperience Interface for non-interactive agents.
+Headless gate interface for non-interactive agents and scripts.
 Most agent workflows use the installed `/no-mistakes` skill, which drives this command surface underneath.
 It prints TOON to stdout, prints progress to stderr, and uses structured stdout errors with exit code `1` for operational failures and `2` for bad usage.
 
 ```sh
-no-mistakes axi
+no-mistakes gate
 ```
 
 With no subcommand, shows the executable path, description, repo, current branch, daemon state, recent runs, and next-step help.
-When the current branch has an active run, that run appears as `active_run` with any approval gate and help for `axi respond` or `axi abort`.
+When the current branch has an active run, that run appears as `active_run` with any approval gate and help for `gate respond` or `gate cancel`.
 When only another branch has an active run, that run appears as `other_branch_active_run`; the help tells agents to leave it alone and start validation for the current branch.
 
-## no-mistakes axi run
+## no-mistakes gate run
 
 Start or reattach to validation for the current branch, blocking until the first approval gate, CI-ready decision point, or final outcome.
 An active run on another branch does not block starting validation for the current branch.
 
 ```sh
-no-mistakes axi run --intent "the user's goal"
-no-mistakes axi run --intent "the user's goal" --skip test,lint
-no-mistakes axi run --intent "the user's goal" --yes
+no-mistakes gate run --intent "the user's goal"
+no-mistakes gate run --intent "the user's goal" --skip test,lint
+no-mistakes gate run --intent "the user's goal" --yes
 ```
 
 | Flag | Type | Default | Description |
@@ -87,25 +87,25 @@ no-mistakes axi run --intent "the user's goal" --yes
 `--intent` is not a description of the diff.
 It is the user's goal or request, and no-mistakes uses it verbatim instead of transcript inference.
 Err on the side of completeness: include the goal, important decisions and tradeoffs, constraints or approaches ruled in or out, and explicit requests that might otherwise look surprising in the diff.
-When starting a new run, `axi run` refuses the default branch and uncommitted working trees with actionable errors instead of auto-branching or auto-committing.
+When starting a new run, `gate run` refuses the default branch and uncommitted working trees with actionable errors instead of auto-branching or auto-committing.
 Reattaching to an in-flight run does not require `--intent`.
-With `--yes`, `axi run` treats both `action: auto-fix` and `action: ask-user` findings as standing consent for the pipeline to fix them by selecting every finding, then accepts the resulting fix review.
+With `--yes`, `gate run` treats both `action: auto-fix` and `action: ask-user` findings as standing consent for the pipeline to fix them by selecting every finding, then accepts the resulting fix review.
 Gates with no findings or only `action: no-op` findings are approved as-is, and each step is fixed at most once so unresolved findings do not loop forever.
-Without `--yes`, an agent driving `axi run` should stop when a gate contains `action: ask-user` findings and relay each finding's ID, file, and full description to the user before responding.
-When the CI step is still monitoring an open PR and checks are green, `axi run` exits successfully with `outcome: checks-passed` instead of waiting for a human merge.
+Without `--yes`, an agent driving `gate run` should stop when a gate contains `action: ask-user` findings and relay each finding's ID, file, and full description to the user before responding.
+When the CI step is still monitoring an open PR and checks are green, `gate run` exits successfully with `outcome: checks-passed` instead of waiting for a human merge.
 Treat that as the agent stopping point: ask the user to review and merge the PR from the `help` line.
 Successful outcomes (`checks-passed` and `passed`) also carry `help` instructions telling the agent to summarize the run.
 When the pipeline applied fixes, they include a `fixes` table and a `help` instruction to acknowledge the misses and list those fixes for the user's review.
 
-## no-mistakes axi respond
+## no-mistakes gate respond
 
 Answer the current approval gate and continue until the next gate, CI-ready decision point, or final outcome.
 
 ```sh
-no-mistakes axi respond --action approve
-no-mistakes axi respond --action fix --findings F1,F2 --instructions "optional guidance"
-no-mistakes axi respond --action fix --add-finding '{"description":"...","action":"auto-fix"}'
-no-mistakes axi respond --action skip
+no-mistakes gate respond --action approve
+no-mistakes gate respond --action fix --findings F1,F2 --instructions "optional guidance"
+no-mistakes gate respond --action fix --add-finding '{"description":"...","action":"auto-fix"}'
+no-mistakes gate respond --action skip
 ```
 
 | Flag | Type | Default | Description |
@@ -117,30 +117,30 @@ no-mistakes axi respond --action skip
 | `--add-finding` | `string` | (none) | JSON finding object to add and fix |
 | `-y`, `--yes` | `bool` | `false` | Auto-resolve every subsequent gate until a decision point or outcome |
 
-After the explicit response, `--yes` uses the same auto-resolution behavior as `axi run --yes`: have the pipeline fix `auto-fix` and `ask-user` findings once, approve the fix review, approve gates that only contain non-actionable `no-op` findings, and stop at `outcome: checks-passed` when CI is green but the PR still needs a human merge.
-The same successful-output reporting instructions apply to `axi respond` results.
+After the explicit response, `--yes` uses the same auto-resolution behavior as `gate run --yes`: have the pipeline fix `auto-fix` and `ask-user` findings once, approve the fix review, approve gates that only contain non-actionable `no-op` findings, and stop at `outcome: checks-passed` when CI is green but the PR still needs a human merge.
+The same successful-output reporting instructions apply to `gate respond` results.
 
-## no-mistakes axi status
+## no-mistakes gate status
 
 Show a run, preferring the current branch's active or most recent run before falling back to repo-wide active or recent runs.
 
 ```sh
-no-mistakes axi status
-no-mistakes axi status --run <id>
+no-mistakes gate status
+no-mistakes gate status --run <id>
 ```
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `--run` | `string` | resolved run | Inspect a specific run ID |
 
-## no-mistakes axi logs
+## no-mistakes gate logs
 
 Show the log output of one pipeline step.
 
 ```sh
-no-mistakes axi logs --step review
-no-mistakes axi logs --step review --full
-no-mistakes axi logs --step review --run <id>
+no-mistakes gate logs --step review
+no-mistakes gate logs --step review --full
+no-mistakes gate logs --step review --run <id>
 ```
 
 | Flag | Type | Default | Description |
@@ -151,16 +151,21 @@ no-mistakes axi logs --step review --run <id>
 
 Without `--full`, long logs show the last 40 lines and a help hint for the full log.
 
-## no-mistakes axi abort
+## no-mistakes gate cancel
 
 Cancel the active run for the current branch.
 Active runs on other branches are left alone.
 
 ```sh
-no-mistakes axi abort
+no-mistakes gate cancel
 ```
 
 If there is no active run, this succeeds as a no-op.
+
+## no-mistakes axi
+
+Compatibility alias for the older agent-facing command surface. Prefer
+`no-mistakes gate` for new automation and agent instructions.
 
 ## no-mistakes eject
 

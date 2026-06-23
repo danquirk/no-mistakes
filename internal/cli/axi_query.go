@@ -23,6 +23,10 @@ import (
 const logTailLines = 40
 
 func newAxiStatusCmd() *cobra.Command {
+	return newHeadlessStatusCmd(axiSurface)
+}
+
+func newHeadlessStatusCmd(surface headlessSurface) *cobra.Command {
 	var runID string
 	cmd := &cobra.Command{
 		Use:           "status",
@@ -31,10 +35,10 @@ func newAxiStatusCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return trackAxiSurface("axi-status", "/axi/status", telemetry.Fields{
+			return trackHeadlessSurface(surface, "status", telemetry.Fields{
 				"explicit_run_id": strings.TrimSpace(runID) != "",
 			}, func() error {
-				return runAxiStatus(cmd, runID)
+				return runHeadlessStatus(cmd, surface, runID)
 			})
 		},
 	}
@@ -43,6 +47,10 @@ func newAxiStatusCmd() *cobra.Command {
 }
 
 func runAxiStatus(cmd *cobra.Command, runID string) error {
+	return runHeadlessStatus(cmd, axiSurface, runID)
+}
+
+func runHeadlessStatus(cmd *cobra.Command, surface headlessSurface, runID string) error {
 	env, err := openAxiEnv(false)
 	if err != nil {
 		return emitError(cmd, 1, err.Error(), repoInitHelp(err)...)
@@ -60,7 +68,7 @@ func runAxiStatus(cmd *cobra.Command, runID string) error {
 		}
 		emitDoc(cmd,
 			toon.Field{Key: "runs", Value: "0 runs yet in this repository"},
-			toon.Field{Key: "help", Value: []string{startRunHelp()}},
+			toon.Field{Key: "help", Value: []string{startRunHelp(surface)}},
 		)
 		return nil
 	}
@@ -72,7 +80,7 @@ func runAxiStatus(cmd *cobra.Command, runID string) error {
 	rv := runViewFromDB(run, steps)
 	fields := []toon.Field{runObjectField(rv)}
 	if gate, ok := rv.awaitingStep(); ok {
-		fields = append(fields, gateFields(gate)...)
+		fields = append(fields, gateFields(gate, surface)...)
 	} else if terminalStatus(rv.Status) {
 		fields = append(fields, toon.Field{Key: "outcome", Value: outcomeFor(rv.Status)})
 		if run.Error != nil && *run.Error != "" {
@@ -83,15 +91,19 @@ func runAxiStatus(cmd *cobra.Command, runID string) error {
 	return nil
 }
 
-func startRunHelp() string {
-	return `Run no-mistakes axi run --intent "the user's goal" --yes to validate the current branch`
+func startRunHelp(surface headlessSurface) string {
+	return `Run ` + surface.command("run") + ` --intent "the user's goal" --yes to validate the current branch`
 }
 
-func noRunLogsHelp() string {
-	return startRunHelp()
+func noRunLogsHelp(surface headlessSurface) string {
+	return startRunHelp(surface)
 }
 
 func newAxiLogsCmd() *cobra.Command {
+	return newHeadlessLogsCmd(axiSurface)
+}
+
+func newHeadlessLogsCmd(surface headlessSurface) *cobra.Command {
 	var step, runID string
 	var full bool
 	cmd := &cobra.Command{
@@ -101,12 +113,12 @@ func newAxiLogsCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return trackAxiSurface("axi-logs", "/axi/logs", telemetry.Fields{
+			return trackHeadlessSurface(surface, "logs", telemetry.Fields{
 				"step":            sanitizeAxiTelemetryStep(step),
 				"full":            full,
 				"explicit_run_id": strings.TrimSpace(runID) != "",
 			}, func() error {
-				return runAxiLogs(cmd, step, runID, full)
+				return runHeadlessLogs(cmd, surface, step, runID, full)
 			})
 		},
 	}
@@ -117,6 +129,10 @@ func newAxiLogsCmd() *cobra.Command {
 }
 
 func runAxiLogs(cmd *cobra.Command, step, runID string, full bool) error {
+	return runHeadlessLogs(cmd, axiSurface, step, runID, full)
+}
+
+func runHeadlessLogs(cmd *cobra.Command, surface headlessSurface, step, runID string, full bool) error {
 	step = strings.TrimSpace(step)
 	if step == "" {
 		return emitError(cmd, 2, "--step is required",
@@ -139,7 +155,7 @@ func runAxiLogs(cmd *cobra.Command, step, runID string, full bool) error {
 	}
 	if run == nil {
 		return emitError(cmd, 1, "no run found to read logs from",
-			noRunLogsHelp())
+			noRunLogsHelp(surface))
 	}
 
 	path := filepath.Join(env.p.RunLogDir(run.ID), step+".log")
@@ -164,7 +180,7 @@ func runAxiLogs(cmd *cobra.Command, step, runID string, full bool) error {
 		fields = append(fields,
 			toon.Field{Key: "lines", Value: fmt.Sprintf("%d of %d total (tail)", len(shown), len(lines))},
 			toon.Field{Key: "log", Value: logRows(shown)},
-			toon.Field{Key: "help", Value: []string{fmt.Sprintf("Run `no-mistakes axi logs --step %s --full` to see the entire log", step)}},
+			toon.Field{Key: "help", Value: []string{fmt.Sprintf("Run `%s --step %s --full` to see the entire log", surface.command("logs"), step)}},
 		)
 		emitDoc(cmd, fields...)
 		return nil

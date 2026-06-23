@@ -6,11 +6,6 @@ import (
 	"github.com/kunchenguid/no-mistakes/internal/telemetry"
 )
 
-// TestAxiCommandsEmitPageviews verifies that every agent-facing axi command
-// records a pageview, giving agent usage parity with the human surfaces (the
-// TUI emits /tui and the wizard /wizard). The commands fail fast here because
-// the repo is uninitialized, but the pageview fires at command entry before any
-// of that, so it is still recorded.
 func TestAxiCommandsEmitPageviews(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -28,26 +23,51 @@ func TestAxiCommandsEmitPageviews(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			t.Setenv("NM_HOME", t.TempDir())
-			chdir(t, tmpDir)
-
-			recorder := &telemetryRecorder{}
-			restore := telemetry.SetDefaultForTesting(recorder)
-			defer restore()
-
-			// The command may fail (uninitialized repo); we only assert telemetry.
-			_, _ = executeCmd(tc.args...)
-
-			if event := recorder.find("pageview", "path", tc.path); event == nil {
-				t.Fatalf("expected %s pageview for %v", tc.path, tc.args)
-			}
-			// The pageview is added alongside the existing command event, not in
-			// place of it, so per-command status/duration is still recorded.
-			if event := recorder.find("command", "command", tc.command); event == nil {
-				t.Fatalf("expected %s command event alongside the pageview", tc.command)
-			}
+			assertHeadlessTelemetry(t, tc.args, tc.path, tc.command)
 		})
+	}
+}
+
+func TestGateCommandsEmitPageviews(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		path    string
+		command string
+	}{
+		{"home", []string{"gate"}, "/gate", "gate-home"},
+		{"run", []string{"gate", "run", "--intent", "ship the thing"}, "/gate/run", "gate-run"},
+		{"respond", []string{"gate", "respond", "--action", "approve"}, "/gate/respond", "gate-respond"},
+		{"status", []string{"gate", "status"}, "/gate/status", "gate-status"},
+		{"logs", []string{"gate", "logs", "--step", "review"}, "/gate/logs", "gate-logs"},
+		{"cancel", []string{"gate", "cancel"}, "/gate/cancel", "gate-cancel"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertHeadlessTelemetry(t, tc.args, tc.path, tc.command)
+		})
+	}
+}
+
+func assertHeadlessTelemetry(t *testing.T, args []string, path, command string) {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	t.Setenv("NM_HOME", t.TempDir())
+	chdir(t, tmpDir)
+
+	recorder := &telemetryRecorder{}
+	restore := telemetry.SetDefaultForTesting(recorder)
+	defer restore()
+
+	_, _ = executeCmd(args...)
+
+	if event := recorder.find("pageview", "path", path); event == nil {
+		t.Fatalf("expected %s pageview for %v", path, args)
+	}
+	if event := recorder.find("command", "command", command); event == nil {
+		t.Fatalf("expected %s command event alongside the pageview", command)
 	}
 }
 

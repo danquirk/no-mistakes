@@ -53,6 +53,7 @@ func ConfigureShellCommand(cmd *exec.Cmd) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	cmd.SysProcAttr.CreationFlags |= createNewProcessGroup
+	cmd.SysProcAttr.HideWindow = true
 
 	// Install a WaitDelay backstop unless the caller has chosen one
 	// explicitly (the short login-shell probe, for example, uses a tighter
@@ -67,6 +68,7 @@ func ConfigureShellCommand(cmd *exec.Cmd) {
 		}
 		pid := strconv.Itoa(cmd.Process.Pid)
 		kill := exec.Command("taskkill", "/T", "/F", "/PID", pid)
+		kill.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 		err := kill.Run()
 		switch {
 		case err == nil:

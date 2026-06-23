@@ -25,8 +25,8 @@ func TestMarkdownFrontmatter(t *testing.T) {
 	if strings.Count(md, "---\n") < 2 {
 		t.Errorf("frontmatter not closed with a second --- delimiter")
 	}
-	if !strings.Contains(md, "no-mistakes axi run") {
-		t.Errorf("body should document the axi run command")
+	if !strings.Contains(md, "no-mistakes gate run") {
+		t.Errorf("body should document the gate run command")
 	}
 	// The user-level install is a genuine user installation, so it must stay
 	// discoverable: the internal marker that hid the old vendored repo copies

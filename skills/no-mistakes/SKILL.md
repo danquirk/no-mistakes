@@ -8,13 +8,13 @@ user-invocable: true
 
 `no-mistakes` is a local gate that validates your code changes through a pipeline
 (intent, rebase, review, test, document, lint, push, PR, CI) before they reach
-the configured push target. You drive it through the `no-mistakes axi` command family, which prints
+the configured push target. You drive it through the `no-mistakes gate` command family, which prints
 machine-readable [TOON](https://toonformat.dev) to stdout and progress to stderr.
 
 When the user invokes `/no-mistakes`, report the outcome at the end. If the user
-asks for something specific, translate that request into the matching `axi run`
+asks for something specific, translate that request into the matching `gate run`
 flags yourself - for example, "skip the lint step" becomes `--skip=lint`. Run
-`no-mistakes axi run --help` to see the available flags.
+`no-mistakes gate run --help` to see the available flags.
 
 ## Two ways to invoke
 
@@ -50,14 +50,14 @@ the same way once the work is committed on a feature branch.
 - You must be on a **feature branch**, not the repository's default branch.
 - The repository must already be initialized with `no-mistakes init`.
 
-If any of these is not met, `axi run` returns an `error:` with the exact command
+If any of these is not met, `gate run` returns an `error:` with the exact command
 to fix it - read it and act on it (commit your work, or create a branch). If the
 repository is not initialized, run `no-mistakes init` first; if the `no-mistakes`
 command itself is missing or misbehaving, `no-mistakes doctor` reports what is
 wrong.
-Before starting, run `no-mistakes axi` (home view).
-If it shows an active run on your current branch, resume it or use `axi abort` before starting over.
-If it shows an active run on another branch, leave that run alone and start validation for your current branch with `no-mistakes axi run --intent "..."`.
+Before starting, run `no-mistakes gate` (home view).
+If it shows an active run on your current branch, resume it or use `gate cancel` before starting over.
+If it shows an active run on another branch, leave that run alone and start validation for your current branch with `no-mistakes gate run --intent "..."`.
 
 ## Intent is required
 
@@ -83,13 +83,13 @@ Run the pipeline and decide on its findings as they come up:
 
 1. Start the run. It blocks until the first decision point or the end:
    ```sh
-   no-mistakes axi run --intent "<what the user set out to accomplish>"
+   no-mistakes gate run --intent "<what the user set out to accomplish>"
    ```
-   `axi run` and every `axi respond` block synchronously - the review, test,
+   `gate run` and every `gate respond` block synchronously - the review, test,
    and CI steps can each take **several minutes**, so a single call may not
    return for a while. That is normal; allow a long timeout and do not cancel
    or re-issue the command because it seems slow. To check progress without
-   disturbing the run, use `no-mistakes axi status` from a separate call.
+   disturbing the run, use `no-mistakes gate status` from a separate call.
 2. If the output contains a `gate:` object, the pipeline is waiting on you.
    Read its `findings` table. Each finding has an `id`, `severity`,
    `file`, `description`, and an `action` that tells you how the
@@ -104,13 +104,13 @@ Run the pipeline and decide on its findings as they come up:
    Choose one response:
    ```sh
    # accept the step as-is and continue
-   no-mistakes axi respond --action approve
+   no-mistakes gate respond --action approve
 
    # have the pipeline fix specific findings, then continue
-   no-mistakes axi respond --action fix --findings <id1,id2> --instructions "<optional guidance>"
+   no-mistakes gate respond --action fix --findings <id1,id2> --instructions "<optional guidance>"
 
    # skip this step
-   no-mistakes axi respond --action skip
+   no-mistakes gate respond --action skip
    ```
    While a run is active, never fix findings by editing the code yourself -
    the pipeline owns both the findings and the fixes. Your job at a gate is to
@@ -137,13 +137,13 @@ Run the pipeline and decide on its findings as they come up:
    - `failed` or `cancelled` - they did not; read the output and address it.
      Fix whatever the output points at (a failing test, a lint error, a finding
      you skipped), commit the fix on the same feature branch, then drive the
-     pipeline again - `no-mistakes axi run --intent "..."` starts a fresh run,
+     pipeline again - `no-mistakes gate run --intent "..."` starts a fresh run,
      or `no-mistakes rerun` re-runs the pipeline for the current branch. Do not
      leave the user at a `failed` outcome without either retrying or explaining
      what blocks it.
 
 The CI step deliberately watches the PR until it is merged or closed, so
-`axi run` returns `checks-passed` the moment checks are green rather than
+`gate run` returns `checks-passed` the moment checks are green rather than
 blocking on the human merge. Never poll or re-run waiting for the merge yourself.
 
 On a successful outcome (`checks-passed` or `passed`), close the loop with the
@@ -174,8 +174,8 @@ The one exception is `--yes` (below): it is the user's standing consent to
 drive every gate unattended, so under `--yes` you resolve `ask-user`
 findings automatically instead of stopping to ask.
 
-If you have clear consent to drive the run automatically, pass `--yes` to `axi run`
-or `axi respond`. It treats every actionable finding - `auto-fix` and
+If you have clear consent to drive the run automatically, pass `--yes` to `gate run`
+or `gate respond`. It treats every actionable finding - `auto-fix` and
 `ask-user` alike - as consent to fix it, selects every current finding for one
 fix round, accepts the resulting fix review, and approves gates with only
 `no-op` findings. Only use it when the user has asked you to drive the whole
@@ -184,10 +184,10 @@ run without checking back.
 ## Inspecting state
 
 ```sh
-no-mistakes axi               # home view: current branch, active runs, next steps
-no-mistakes axi status        # full detail of the resolved run
-no-mistakes axi logs --step <name> --full   # full log output of one step
-no-mistakes axi abort         # cancel the current-branch active run
+no-mistakes gate               # home view: current branch, active runs, next steps
+no-mistakes gate status        # full detail of the resolved run
+no-mistakes gate logs --step <name> --full   # full log output of one step
+no-mistakes gate cancel         # cancel the current-branch active run
 ```
 
 ## Reading the output
@@ -207,8 +207,8 @@ findings[2]{id,severity,file,description,action}:
   r1,medium,internal/pipeline/executor.go,Error from os.Remove is ignored,auto-fix
   r2,high,cmd/no-mistakes/main.go,New --force flag bypasses the confirm prompt,ask-user
 help[2]:
-  no-mistakes axi respond --action fix --findings r1
-  no-mistakes axi respond --action approve
+  no-mistakes gate respond --action fix --findings r1
+  no-mistakes gate respond --action approve
 ```
 
 Read the `action` column per row: decide `r1` (auto-fix) on your own

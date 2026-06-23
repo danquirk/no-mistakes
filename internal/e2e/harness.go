@@ -21,6 +21,7 @@ import (
 
 	"github.com/kunchenguid/no-mistakes/internal/ipc"
 	"github.com/kunchenguid/no-mistakes/internal/paths"
+	"github.com/kunchenguid/no-mistakes/internal/process"
 	"github.com/kunchenguid/no-mistakes/internal/types"
 )
 
@@ -103,16 +104,17 @@ func NewHarness(t *testing.T, opts SetupOpts) *Harness {
 		}
 	}
 
-	// Symlink each agent name to the same fake binary. Codex and Claude
-	// dispatch by argv[0] basename; opencode the same. Symlinks (not
-	// copies) keep the build cheap on subsequent tests. The `gh` symlink
-	// is a guard rail: BinDir is prepended to PATH, so any stray invocation
-	// of gh by the pipeline (e.g. PR/CI on a misconfigured origin) hits
-	// the fakeagent stub instead of a real, authenticated system gh.
+	// Install each agent name to the same fake binary. Codex and Claude dispatch
+	// by argv[0] basename; opencode the same. Symlinks keep the build cheap where
+	// available, but Windows often denies symlink creation without developer mode
+	// or elevated privileges, so the helper falls back to copying there. The `gh`
+	// shim is a guard rail: BinDir is prepended to PATH, so any stray invocation
+	// of gh by the pipeline (e.g. PR/CI on a misconfigured origin) hits the
+	// fakeagent stub instead of a real, authenticated system gh.
 	for _, name := range []string{"claude", "codex", "opencode", "gh"} {
-		linkPath := filepath.Join(h.BinDir, name)
-		if err := os.Symlink(fakeBin, linkPath); err != nil {
-			t.Fatalf("symlink %s: %v", linkPath, err)
+		shimPath := fakeAgentShimPath(h.BinDir, name)
+		if err := installFakeAgentShim(fakeBin, shimPath); err != nil {
+			t.Fatalf("install fake %s shim: %v", name, err)
 		}
 	}
 
@@ -156,6 +158,30 @@ func NewHarness(t *testing.T, opts SetupOpts) *Harness {
 	return h
 }
 
+func fakeAgentShimPath(binDir, name string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(binDir, name+".exe")
+	}
+	return filepath.Join(binDir, name)
+}
+
+func installFakeAgentShim(fakeBin, shimPath string) error {
+	if err := os.Symlink(fakeBin, shimPath); err == nil {
+		return nil
+	} else if runtime.GOOS != "windows" {
+		return err
+	}
+	return copyFile(fakeBin, shimPath, 0o755)
+}
+
+func copyFile(src, dst string, perm os.FileMode) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, perm)
+}
+
 // writeGlobalConfig writes a no-mistakes global config that pins the
 // agent name and binary path. The path override forces no-mistakes'
 // agent.New to use our absolute fake-agent path instead of looking up the
@@ -166,7 +192,7 @@ func (h *Harness) writeGlobalConfig() {
 	if err := os.MkdirAll(h.NMHome, 0o755); err != nil {
 		h.t.Fatalf("mkdir nm home: %v", err)
 	}
-	binLink := filepath.Join(h.BinDir, h.agentName)
+	binLink := fakeAgentShimPath(h.BinDir, h.agentName)
 	cfg := fmt.Sprintf(`agent: %s
 log_level: debug
 agent_path_override:
@@ -257,6 +283,7 @@ func (h *Harness) RunInDirWithEnv(dir string, env map[string]string, args ...str
 	cmd := exec.CommandContext(ctx, h.NMBin, args...)
 	cmd.Dir = dir
 	cmd.Env = mergedEnv(os.Environ(), env)
+	process.HideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -637,6 +664,7 @@ func (h *Harness) runGit(ctx context.Context, dir string, args ...string) ([]byt
 		"GIT_COMMITTER_NAME=E2E Test",
 		"GIT_COMMITTER_EMAIL=e2e@example.com",
 	)
+	process.HideWindow(cmd)
 	return cmd.CombinedOutput()
 }
 
@@ -666,6 +694,7 @@ func (h *Harness) shutdown() {
 	cmd := exec.CommandContext(ctx, h.NMBin, "daemon", "stop")
 	cmd.Dir = h.WorkDir
 	cmd.Env = os.Environ()
+	process.HideWindow(cmd)
 	_ = cmd.Run()
 }
 
@@ -705,6 +734,7 @@ func buildBinaries(t *testing.T) (nmBin, fakeBin string) {
 		} {
 			cmd := exec.Command("go", "build", "-o", target.out, target.pkg)
 			cmd.Dir = repoRoot
+			process.HideWindow(cmd)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				buildErr = fmt.Errorf("build %s: %v\n%s", target.pkg, err, out)

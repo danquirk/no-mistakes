@@ -10,7 +10,10 @@ import (
 	"strings"
 )
 
-var runGit = Run
+var (
+	runGit     = Run
+	runBareGit = RunBare
+)
 
 // PostReceiveHookScript returns the shell script for the post-receive hook.
 // The hook notifies the daemon via the CLI so it works across platforms.
@@ -176,19 +179,19 @@ func writeHookFileAtomic(path string, content []byte) error {
 // Idempotent: safe to call on an already-configured bare repo to
 // migrate older installs when per-worktree config is available.
 func IsolateHooksPath(ctx context.Context, bareDir string) error {
-	if _, err := runGit(ctx, bareDir, "config", "--worktree", "--get", "core.hookspath"); err != nil {
+	if _, err := runBareGit(ctx, bareDir, "config", "--worktree", "--get", "core.hookspath"); err != nil {
 		if isWorktreeConfigUnsupported(err) {
 			return nil
 		}
 	}
-	if _, err := runGit(ctx, bareDir, "config", "extensions.worktreeConfig", "true"); err != nil {
+	if _, err := runBareGit(ctx, bareDir, "config", "extensions.worktreeConfig", "true"); err != nil {
 		return fmt.Errorf("enable worktree config: %w", err)
 	}
 	hooksDir, err := filepath.Abs(filepath.Join(bareDir, "hooks"))
 	if err != nil {
 		return fmt.Errorf("resolve hooks dir: %w", err)
 	}
-	if _, err := runGit(ctx, bareDir, "config", "--worktree", "core.hookspath", hooksDir); err != nil {
+	if _, err := runBareGit(ctx, bareDir, "config", "--worktree", "core.hookspath", hooksDir); err != nil {
 		if isWorktreeConfigUnsupported(err) {
 			return nil
 		}
@@ -203,13 +206,13 @@ func IsolateHooksPath(ctx context.Context, bareDir string) error {
 // scope into linked worktrees, breaking rebase/merge/etc. and provider CLI
 // repo resolution from worktree cwd.
 func relocateCoreBareToWorktreeScope(ctx context.Context, bareDir string) error {
-	if _, err := runGit(ctx, bareDir, "config", "--worktree", "core.bare", "true"); err != nil {
+	if _, err := runBareGit(ctx, bareDir, "config", "--worktree", "core.bare", "true"); err != nil {
 		if isWorktreeConfigUnsupported(err) {
 			return nil
 		}
 		return fmt.Errorf("pin core.bare per-worktree: %w", err)
 	}
-	if _, err := runGit(ctx, bareDir, "config", "--local", "--unset", "core.bare"); err != nil {
+	if _, err := runBareGit(ctx, bareDir, "config", "--local", "--unset", "core.bare"); err != nil {
 		if isConfigKeyMissing(err) {
 			return nil
 		}

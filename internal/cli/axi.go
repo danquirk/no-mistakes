@@ -17,35 +17,39 @@ import (
 )
 
 // recentRunsHomeLimit caps the recent-runs table on the home view. High enough
-// to cover normal history in one call, per the AXI minimal-call convention.
+// to cover normal history in one call.
 const recentRunsHomeLimit = 10
 
-// newAxiCmd builds the agent-facing command tree. Everything under `axi`
-// follows AXI conventions: TOON on stdout, progress on stderr, structured
-// errors, and explicit exit codes. It is the surface an agent (or the
-// /no-mistakes skill) drives; humans use the bare `no-mistakes` TUI instead.
 func newAxiCmd() *cobra.Command {
+	return newHeadlessCmd(axiSurface)
+}
+
+func newGateCmd() *cobra.Command {
+	return newHeadlessCmd(gateSurface)
+}
+
+// newHeadlessCmd builds a non-interactive command tree. AXI remains a
+// compatibility surface, while gate is the first-class team-facing surface.
+func newHeadlessCmd(surface headlessSurface) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "axi",
-		Short: "Agent interface: drive no-mistakes from an autonomous agent",
-		Long: "Agent eXperience Interface for no-mistakes. Prints token-efficient TOON\n" +
-			"to stdout and is driven entirely by flags (no interactive prompts).\n" +
-			"Running `no-mistakes axi` with no subcommand shows the current state.",
+		Use:           surface.name,
+		Short:         surface.short,
+		Long:          surface.long,
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return trackAxiSurface("axi-home", "/axi", nil, func() error {
-				return runAxiHome(cmd)
+			return trackHeadlessSurface(surface, "", nil, func() error {
+				return runHeadlessHome(cmd, surface)
 			})
 		},
 	}
 
-	cmd.AddCommand(newAxiRunCmd())
-	cmd.AddCommand(newAxiRespondCmd())
-	cmd.AddCommand(newAxiStatusCmd())
-	cmd.AddCommand(newAxiLogsCmd())
-	cmd.AddCommand(newAxiAbortCmd())
+	cmd.AddCommand(newHeadlessRunCmd(surface))
+	cmd.AddCommand(newHeadlessRespondCmd(surface))
+	cmd.AddCommand(newHeadlessStatusCmd(surface))
+	cmd.AddCommand(newHeadlessLogsCmd(surface))
+	cmd.AddCommand(newHeadlessCancelCmd(surface))
 	return cmd
 }
 
@@ -102,6 +106,10 @@ func openAxiEnv(ensureDaemonConn bool) (*axiEnv, error) {
 // state, the active run (if any) with its gate, and recent runs - all from the
 // local database so it works whether or not the daemon is running.
 func runAxiHome(cmd *cobra.Command) error {
+	return runHeadlessHome(cmd, axiSurface)
+}
+
+func runHeadlessHome(cmd *cobra.Command, surface headlessSurface) error {
 	env, err := openAxiEnv(false)
 	if err != nil {
 		return emitError(cmd, 1, err.Error(), repoInitHelp(err)...)
@@ -152,7 +160,7 @@ func runAxiHome(cmd *cobra.Command) error {
 		fields = append(fields, runObjectFieldWithKey("active_run", rv))
 		if gate, ok := rv.awaitingStep(); ok {
 			gated = true
-			fields = append(fields, gateFields(gate)...)
+			fields = append(fields, gateFields(gate, surface)...)
 		}
 	} else if otherActive != nil {
 		steps, _ := env.d.GetStepsByRun(otherActive.ID)
@@ -169,14 +177,14 @@ func runAxiHome(cmd *cobra.Command) error {
 	help := []string{}
 	switch {
 	case currentActive == nil:
-		help = append(help, `Run `+"`"+`no-mistakes axi run --intent "<what the user set out to accomplish>"`+"`"+` to validate your changes`)
+		help = append(help, `Run `+"`"+surface.command("run")+` --intent "<what the user set out to accomplish>"`+"`"+` to validate your changes`)
 		if otherActive != nil {
 			help = append(help, fmt.Sprintf("Another active run is on %s; leave it alone unless you are working on that branch", otherActive.Branch))
 		}
 	case gated:
-		help = append(help, "Run `no-mistakes axi respond --action approve` to clear the current gate")
+		help = append(help, "Run `"+surface.command("respond")+" --action approve` to clear the current gate")
 	default:
-		help = append(help, "Run `no-mistakes axi status` to inspect the active run")
+		help = append(help, "Run `"+surface.command("status")+"` to inspect the active run")
 	}
 	fields = append(fields, toon.Field{Key: "help", Value: help})
 

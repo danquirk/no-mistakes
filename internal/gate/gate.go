@@ -158,7 +158,7 @@ func provisionGate(ctx context.Context, bareDir, absRoot, upstreamURL, reposDir 
 	if err := git.InitBare(ctx, bareDir); err != nil {
 		return fmt.Errorf("create bare repo: %w", err)
 	}
-	if _, err := git.Run(ctx, bareDir, "config", "receive.advertisePushOptions", "true"); err != nil {
+	if _, err := git.RunBare(ctx, bareDir, "config", "receive.advertisePushOptions", "true"); err != nil {
 		return fmt.Errorf("enable push options: %w", err)
 	}
 
@@ -175,7 +175,7 @@ func provisionGate(ctx context.Context, bareDir, absRoot, upstreamURL, reposDir 
 
 	// Record upstream as origin on the gate repo so gh can resolve repository
 	// context from detached worktrees created from the gate.
-	if err := git.EnsureRemote(ctx, bareDir, "origin", upstreamURL); err != nil {
+	if err := git.EnsureRemoteBare(ctx, bareDir, "origin", upstreamURL); err != nil {
 		return fmt.Errorf("add gate origin remote: %w", err)
 	}
 

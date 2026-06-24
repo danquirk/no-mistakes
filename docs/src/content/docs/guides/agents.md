@@ -35,6 +35,7 @@ By default that directory is temporary and local to the machine; repos can opt i
 | Agent | Binary | Protocol |
 |---|---|---|
 | Claude | `claude` | Subprocess per invocation, JSONL streaming |
+| GitHub Copilot CLI | `copilot` | Subprocess per invocation, non-interactive prompt |
 | Codex | `codex` | Subprocess per invocation, JSONL events |
 | Rovo Dev | `acli` | Persistent HTTP server, SSE streaming |
 | OpenCode | `opencode` | Persistent HTTP server, SSE streaming |
@@ -95,8 +96,8 @@ One install makes the skill available to every supported agent in every repo, wi
 If your home directory consolidates `.claude` and `.agents` with symlinks, `init` follows the links and keeps the skill reachable from both logical paths.
 Re-run `no-mistakes init` after an upgrade to refresh that skill, including overwriting stale `SKILL.md` content from an older binary.
 Older versions vendored the skill into each initialized repo's `.claude/skills` and `.agents/skills`; those copies are no longer needed, and `init` prints a notice when it finds one so you can remove it.
-The skill drives `no-mistakes axi`, a non-interactive command surface that prints TOON to stdout and progress to stderr.
-When CI is green but the PR is still open, `axi run` and `axi respond` return `outcome: checks-passed` with a help line pointing at the PR instead of waiting for a human merge.
+The skill drives `no-mistakes gate`, a non-interactive command surface that prints TOON to stdout and progress to stderr.
+When CI is green but the PR is still open, `gate run` and `gate respond` return `outcome: checks-passed` with a help line pointing at the PR instead of waiting for a human merge.
 That is a successful agent stopping point: report that the PR is ready and ask the user to review and merge it.
 Successful outcomes also instruct the agent to summarize the run for the user.
 When the pipeline applied fixes, successful outcomes include a `fixes` table listing each fix so the agent can acknowledge what it missed and the user can review them.
@@ -104,27 +105,27 @@ When the pipeline applied fixes, successful outcomes include a `fixes` table lis
 In task-first mode, if the repo is on the default branch, the skill tells the agent to create a feature branch before committing because the gate validates committed history on a non-default branch.
 The agent should inspect `git status` before changing or committing anything, preserve unrelated pre-existing uncommitted changes, and commit only the changes that belong to the user's task.
 
-Agents can also call `no-mistakes axi` directly:
+Agents can also call `no-mistakes gate` directly:
 
 ```sh
-no-mistakes axi run --intent "the user's goal"
-no-mistakes axi status
-no-mistakes axi respond --action approve
-no-mistakes axi logs --step review --full
-no-mistakes axi abort
+no-mistakes gate run --intent "the user's goal"
+no-mistakes gate status
+no-mistakes gate respond --action approve
+no-mistakes gate logs --step review --full
+no-mistakes gate cancel
 ```
 
-Before starting validation, agents should run the `no-mistakes axi` home view.
-If it shows `active_run`, they should resume or abort that current-branch run instead of starting over.
-If it shows `other_branch_active_run`, they should leave that run alone and start validation for the current branch with `no-mistakes axi run --intent "..."`.
+Before starting validation, agents should run the `no-mistakes gate` home view.
+If it shows `active_run`, they should resume or cancel that current-branch run instead of starting over.
+If it shows `other_branch_active_run`, they should leave that run alone and start validation for the current branch with `no-mistakes gate run --intent "..."`.
 
 When an agent starts a new run, `--intent` is required and should describe what the user wanted to accomplish, not what files changed.
 Agents should prefer a few complete sentences over a terse summary, capturing user decisions, tradeoffs, constraints, ruled-out approaches, and explicit requests that would not be obvious from the diff alone.
-If the repo is on the default branch or has uncommitted changes, direct `axi run` returns a structured error with the command the agent should run instead of silently creating a branch or commit.
-Approval gates are exposed as `gate:` objects with finding IDs, severities, files, actions, descriptions, and help commands for `no-mistakes axi respond`.
+If the repo is on the default branch or has uncommitted changes, direct `gate run` returns a structured error with the command the agent should run instead of silently creating a branch or commit.
+Approval gates are exposed as `gate:` objects with finding IDs, severities, files, actions, descriptions, and help commands for `no-mistakes gate respond`.
 An agent should resolve `action: auto-fix` findings on its own judgment, ignore `action: no-op` findings when approving, and stop on `action: ask-user` findings unless it is running with explicit `--yes` consent.
 When it stops for `ask-user`, it should relay each finding's ID, file, and full description to the user before choosing `approve`, `fix`, or `skip`.
-Resolving a finding always means responding with `no-mistakes axi respond --action fix`, which has the pipeline apply the fix and re-review it - the agent must not edit the code itself while a run is active.
+Resolving a finding always means responding with `no-mistakes gate respond --action fix`, which has the pipeline apply the fix and re-review it - the agent must not edit the code itself while a run is active.
 Successful outputs can be `outcome: passed` for a completed run or `outcome: checks-passed` when CI has passed and the daemon is still monitoring the unmerged PR for humans, and may include a `fixes` table when the pipeline applied fixes.
 
 ## Binary resolution
@@ -132,16 +133,18 @@ Successful outputs can be `outcome: passed` for a completed run or `outcome: che
 By default, `no-mistakes` resolves `agent: auto` by checking for supported native agents on your `PATH` in this order:
 
 1. `claude`
-2. `codex`
-3. `opencode`
-4. `acli` with `rovodev` support
-5. `pi`
+2. `copilot`
+3. `codex`
+4. `opencode`
+5. `acli` with `rovodev` support
+6. `pi`
 
 The default binary names are:
 
 | Agent | Default binary name |
 |---|---|
 | `claude` | `claude` |
+| `copilot` | `copilot` |
 | `codex` | `codex` |
 | `rovodev` | `acli` |
 | `opencode` | `opencode` |
@@ -155,6 +158,7 @@ Override paths in global config:
 ```yaml
 agent_path_override:
   claude: /Users/you/bin/claude
+  copilot: /Users/you/bin/copilot
   codex: /opt/homebrew/bin/codex
   rovodev: /usr/local/bin/acli
   opencode: /usr/local/bin/opencode
@@ -192,7 +196,7 @@ Transient API and network failures are retried up to three times with exponentia
 
 ## Intent extraction
 
-When an agent starts a run through `no-mistakes axi run --intent`, no-mistakes uses that supplied intent verbatim and skips transcript-based inference, even if `intent.enabled` is false.
+When an agent starts a run through `no-mistakes gate run --intent`, no-mistakes uses that supplied intent verbatim and skips transcript-based inference, even if `intent.enabled` is false.
 Otherwise, when `intent.enabled` is true, no-mistakes reads recent local transcripts from Claude Code, Codex, OpenCode, Rovo Dev, and Pi during the `intent` pipeline step.
 It matches sessions against non-deleted changed files when present, falls back to all changed files for all-deletion diffs, summarizes the likely author intent with the configured pipeline agent, includes that summary as untrusted context in rebase fixes, review checks and fixes, test detection, evidence validation, and fixes, lint detection and fixes, documentation checks and fixes, CI auto-fixes, and PR prompts, and renders it in generated PR descriptions.
 
@@ -212,6 +216,14 @@ Use `intent.disabled_readers` to disable specific transcript sources, or set `in
 ## Claude
 
 Spawns a `claude` subprocess for each invocation with `--output-format stream-json`. By default it also adds `--dangerously-skip-permissions`, unless you already set your own Claude permission flag through `agent_args_override`. Reads JSONL events from stdout. Supports native structured output via `--json-schema`.
+
+## GitHub Copilot CLI
+
+Spawns a `copilot` subprocess for each invocation with `-p/--prompt` in
+non-interactive mode. no-mistakes passes `--allow-all`, disables remote export
+and auto-update for the invocation, and requests silent text output. When
+structured output is requested, no-mistakes appends the JSON schema to the prompt
+and parses the final Copilot response.
 
 ## Codex
 

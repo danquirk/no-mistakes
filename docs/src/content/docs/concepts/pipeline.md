@@ -76,7 +76,7 @@ You can't reorder steps. You *can*:
 - Control auto-fix limits per step.
 - Ignore paths during review and documentation checks.
 - Disable or tune transcript-based intent extraction when intent is not supplied directly.
-- Skip steps for one run with `no-mistakes --skip <steps>`, `git push -o no-mistakes.skip=<steps>`, `no-mistakes axi run --skip <steps>`, or from the TUI.
+- Skip steps for one run with `no-mistakes --skip <steps>`, `git push -o no-mistakes.skip=<steps>`, `no-mistakes gate run --skip <steps>`, or from the TUI.
 
 See [Configuration](/no-mistakes/guides/configuration/).
 

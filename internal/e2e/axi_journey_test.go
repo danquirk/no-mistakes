@@ -176,6 +176,106 @@ func TestAxiAgentJourney(t *testing.T) {
 	}
 }
 
+// TestGateAgentJourney proves the first-class headless gate surface can drive
+// the same pipeline path as AXI without exposing AXI vocabulary to the caller.
+func TestGateAgentJourney(t *testing.T) {
+	h := NewHarness(t, SetupOpts{Agent: "claude", Scenario: axiScenario(t)})
+
+	h.CommitChange("init-gate", "seed.txt", "seed\n", "seed for gate init")
+	initWorktree := h.AddWorktree("init-gate")
+	out, err := h.RunInDir(initWorktree, "init")
+	if err != nil {
+		t.Fatalf("nm init: %v\n%s", err, out)
+	}
+
+	home, err := h.RunInDir(initWorktree, "gate")
+	if err != nil {
+		t.Fatalf("gate home: %v\n%s", err, home)
+	}
+	for _, want := range []string{"bin: ", "description: ", "daemon: running", "help["} {
+		if !strings.Contains(home, want) {
+			t.Errorf("gate home missing %q in:\n%s", want, home)
+		}
+	}
+	if strings.Contains(home, "no-mistakes axi") {
+		t.Errorf("gate home should not direct users to AXI:\n%s", home)
+	}
+
+	h.CommitChange("feature/gate", "feature.txt", "change\n", "add gate feature change")
+	fw := h.AddWorktree("feature/gate")
+
+	gateOut, err := h.RunInDir(fw, "gate", "run", "--intent", axiIntent)
+	if err != nil {
+		t.Fatalf("gate run (expected to stop at gate, exit 0): %v\n%s", err, gateOut)
+	}
+	for _, want := range []string{
+		"gate:",
+		"step: review",
+		"status: awaiting_approval",
+		"ask-user",
+		"potential nil deref",
+		"no-mistakes gate respond --action approve",
+	} {
+		if !strings.Contains(gateOut, want) {
+			t.Errorf("gate run output missing %q in:\n%s", want, gateOut)
+		}
+	}
+	if strings.Contains(gateOut, "no-mistakes axi") {
+		t.Errorf("gate run should not direct users to AXI:\n%s", gateOut)
+	}
+
+	if gated := waitForStepStatus(t, h, "feature/gate", types.StepReview, types.StepStatusAwaitingApproval, 60*time.Second); gated == nil {
+		t.Fatal("expected feature/gate run to be awaiting approval")
+	}
+
+	doneOut, err := h.RunInDir(fw, "gate", "respond", "--action", "approve")
+	if err != nil {
+		t.Fatalf("gate respond approve (expected exit 0 on pass): %v\n%s", err, doneOut)
+	}
+	if !strings.Contains(doneOut, "outcome: passed") {
+		t.Errorf("gate respond did not report a passing outcome:\n%s", doneOut)
+	}
+
+	completed := h.WaitForRun("feature/gate", 60*time.Second)
+	if completed.Status != types.RunCompleted {
+		t.Fatalf("feature/gate run status = %s, want completed", completed.Status)
+	}
+	if !anyPromptContains(h, axiIntent) {
+		t.Errorf("supplied intent %q never reached an agent prompt", axiIntent)
+	}
+
+	statusOut, err := h.RunInDir(fw, "gate", "status")
+	if err != nil {
+		t.Fatalf("gate status: %v\n%s", err, statusOut)
+	}
+	for _, want := range []string{"run:", "branch: feature/gate", "outcome: passed"} {
+		if !strings.Contains(statusOut, want) {
+			t.Errorf("gate status missing %q in:\n%s", want, statusOut)
+		}
+	}
+
+	logsOut, err := h.RunInDir(fw, "gate", "logs", "--step", "review")
+	if err != nil {
+		t.Fatalf("gate logs: %v\n%s", err, logsOut)
+	}
+	if !strings.Contains(logsOut, "step: review") {
+		t.Errorf("gate logs missing step header in:\n%s", logsOut)
+	}
+
+	h.CommitChange("feature/gate-yes", "feature2.txt", "change2\n", "add gate feature change 2")
+	yw := h.AddWorktree("feature/gate-yes")
+	autoOut, err := h.RunInDir(yw, "gate", "run", "--yes", "--intent", axiIntent)
+	if err != nil {
+		t.Fatalf("gate run --yes (expected exit 0 on pass): %v\n%s", err, autoOut)
+	}
+	if !strings.Contains(autoOut, "outcome: passed") {
+		t.Errorf("gate run --yes did not report a passing outcome:\n%s", autoOut)
+	}
+	if autoRun := h.WaitForRun("feature/gate-yes", 60*time.Second); autoRun.Status != types.RunCompleted {
+		t.Fatalf("feature/gate-yes run status = %s, want completed", autoRun.Status)
+	}
+}
+
 // TestAxiRunPreflightGuards proves `axi run` refuses to start a run with
 // structured, actionable errors instead of silently doing the wrong thing:
 // missing intent, the default branch, and an uncommitted working tree.
@@ -223,6 +323,50 @@ func TestAxiRunPreflightGuards(t *testing.T) {
 	}
 }
 
+func TestGateRunPreflightGuards(t *testing.T) {
+	h := NewHarness(t, SetupOpts{Agent: "claude", Scenario: axiScenario(t)})
+
+	h.CommitChange("init-gate-guards", "seed.txt", "seed\n", "seed for gate guards")
+	initWorktree := h.AddWorktree("init-gate-guards")
+	if out, err := h.RunInDir(initWorktree, "init"); err != nil {
+		t.Fatalf("nm init: %v\n%s", err, out)
+	}
+
+	h.CommitChange("feature/gate-needs-intent", "a.txt", "a\n", "add a")
+	niw := h.AddWorktree("feature/gate-needs-intent")
+	out, err := h.RunInDir(niw, "gate", "run")
+	if err == nil {
+		t.Errorf("gate run without --intent should fail; output:\n%s", out)
+	}
+	if !strings.Contains(out, "--intent is required") {
+		t.Errorf("missing-intent error not surfaced; output:\n%s", out)
+	}
+	if strings.Contains(out, "no-mistakes axi") {
+		t.Errorf("gate preflight help should not mention AXI:\n%s", out)
+	}
+
+	out, err = h.RunInDir(h.WorkDir, "gate", "run", "--intent", "x")
+	if err == nil {
+		t.Errorf("gate run on the default branch should fail; output:\n%s", out)
+	}
+	if !strings.Contains(out, "default branch") {
+		t.Errorf("default-branch error not surfaced; output:\n%s", out)
+	}
+
+	h.CommitChange("feature/gate-dirty", "b.txt", "b\n", "add b")
+	dw := h.AddWorktree("feature/gate-dirty")
+	if err := os.WriteFile(filepath.Join(dw, "uncommitted.txt"), []byte("wip\n"), 0o644); err != nil {
+		t.Fatalf("write uncommitted file: %v", err)
+	}
+	out, err = h.RunInDir(dw, "gate", "run", "--intent", "x")
+	if err == nil {
+		t.Errorf("gate run with a dirty tree should fail; output:\n%s", out)
+	}
+	if !strings.Contains(out, "uncommitted changes") {
+		t.Errorf("dirty-tree error not surfaced; output:\n%s", out)
+	}
+}
+
 // readStepLog returns the contents of a step's log file for a run.
 func readStepLog(t *testing.T, h *Harness, runID, step string) string {
 	t.Helper()
@@ -262,7 +406,7 @@ func assertSkillInstalled(t *testing.T, h *Harness) {
 		for _, want := range []string{
 			"name: no-mistakes",
 			"user-invocable: true",
-			"no-mistakes axi run",
+			"no-mistakes gate run",
 		} {
 			if !strings.Contains(content, want) {
 				t.Errorf("%s missing %q", rel, want)

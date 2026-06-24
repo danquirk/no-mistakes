@@ -7,10 +7,12 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 var taskkillProcessTree = func(pid int) ([]byte, error) {
 	cmd := exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	return cmd.CombinedOutput()
 }
 

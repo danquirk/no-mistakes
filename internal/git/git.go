@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/kunchenguid/no-mistakes/internal/process"
 	"github.com/kunchenguid/no-mistakes/internal/safeurl"
 )
 
@@ -29,6 +31,7 @@ func Run(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = NonInteractiveEnv(dir)
+	process.HideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		stderr := ""
@@ -40,9 +43,19 @@ func Run(ctx context.Context, dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// RunBare executes a git command against a bare repository using --git-dir.
+// Git for Windows does not treat cwd inside a bare repository as being "in" the
+// repository for all commands, notably `git config`, so callers that operate on
+// a bare gate should be explicit.
+func RunBare(ctx context.Context, gitDir string, args ...string) (string, error) {
+	fullArgs := append([]string{"--git-dir", gitDir}, args...)
+	return Run(ctx, "", fullArgs...)
+}
+
 // InitBare creates a new bare git repository at the given path.
 func InitBare(ctx context.Context, path string) error {
 	cmd := exec.CommandContext(ctx, "git", "init", "--bare", path)
+	process.HideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git init --bare: %w: %s", err, strings.TrimSpace(string(out)))
@@ -67,6 +80,21 @@ func EnsureRemote(ctx context.Context, dir, name, url string) error {
 	return AddRemote(ctx, dir, name, url)
 }
 
+// AddRemoteBare adds a named remote to a bare repo.
+func AddRemoteBare(ctx context.Context, gitDir, name, url string) error {
+	_, err := RunBare(ctx, gitDir, "remote", "add", name, url)
+	return err
+}
+
+// EnsureRemoteBare sets a named remote in a bare repo, adding it when absent.
+func EnsureRemoteBare(ctx context.Context, gitDir, name, url string) error {
+	if _, err := GetRemoteURLBare(ctx, gitDir, name); err == nil {
+		_, err := RunBare(ctx, gitDir, "remote", "set-url", name, url)
+		return err
+	}
+	return AddRemoteBare(ctx, gitDir, name, url)
+}
+
 // RemoveRemote removes a named remote from the repo at dir.
 func RemoveRemote(ctx context.Context, dir, name string) error {
 	_, err := Run(ctx, dir, "remote", "remove", name)
@@ -76,6 +104,11 @@ func RemoveRemote(ctx context.Context, dir, name string) error {
 // GetRemoteURL returns the URL of a named remote.
 func GetRemoteURL(ctx context.Context, dir, name string) (string, error) {
 	return Run(ctx, dir, "remote", "get-url", name)
+}
+
+// GetRemoteURLBare returns the URL of a named remote in a bare repo.
+func GetRemoteURLBare(ctx context.Context, gitDir, name string) (string, error) {
+	return RunBare(ctx, gitDir, "remote", "get-url", name)
 }
 
 // GetConfiguredRemoteURL returns the literal remote URL from git config,
@@ -200,6 +233,7 @@ func CurrentBranch(ctx context.Context, dir string) (string, error) {
 func IsDetachedHEAD(ctx context.Context, dir string) (bool, error) {
 	cmd := exec.CommandContext(ctx, "git", "symbolic-ref", "-q", "HEAD")
 	cmd.Dir = dir
+	process.HideWindow(cmd)
 	if err := cmd.Run(); err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			// Exit 1 means HEAD is not a symbolic ref — detached.
@@ -345,14 +379,30 @@ func CopyLocalUserIdentity(ctx context.Context, srcDir, dstDir string) error {
 
 // WorktreeAdd creates a detached worktree at wtPath checked out to the given SHA.
 func WorktreeAdd(ctx context.Context, repoDir, wtPath, sha string) error {
+	if isBareRepoDir(repoDir) {
+		_, err := RunBare(ctx, repoDir, "worktree", "add", "--detach", wtPath, sha)
+		return err
+	}
 	_, err := Run(ctx, repoDir, "worktree", "add", "--detach", wtPath, sha)
 	return err
 }
 
 // WorktreeRemove removes a worktree at the given path.
 func WorktreeRemove(ctx context.Context, repoDir, wtPath string) error {
+	if isBareRepoDir(repoDir) {
+		_, err := RunBare(ctx, repoDir, "worktree", "remove", "--force", wtPath)
+		return err
+	}
 	_, err := Run(ctx, repoDir, "worktree", "remove", "--force", wtPath)
 	return err
+}
+
+func isBareRepoDir(dir string) bool {
+	if _, err := os.Stat(filepath.Join(dir, "HEAD")); err != nil {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(dir, "objects"))
+	return err == nil && info.IsDir()
 }
 
 // ResolveRef returns the commit SHA that ref resolves to via
@@ -374,6 +424,7 @@ func ResolveRef(ctx context.Context, dir, ref string) (string, error) {
 func RefExists(ctx context.Context, dir, ref string) (bool, error) {
 	cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
 	cmd.Env = NonInteractiveEnv(dir)
+	process.HideWindow(cmd)
 	if err := cmd.Run(); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && ee.ExitCode() == 1 {

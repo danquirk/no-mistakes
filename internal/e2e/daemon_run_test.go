@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kunchenguid/no-mistakes/internal/process"
 )
 
 func TestDaemonRunUsesProvidedRoot(t *testing.T) {
@@ -31,6 +33,7 @@ func TestDaemonRunUsesProvidedRoot(t *testing.T) {
 	cmd := exec.CommandContext(ctx, h.NMBin, "daemon", "run", "--root", wantRoot)
 	cmd.Dir = h.WorkDir
 	cmd.Env = os.Environ()
+	process.HideWindow(cmd)
 	var output bytes.Buffer
 	cmd.Stdout = &output
 	cmd.Stderr = &output

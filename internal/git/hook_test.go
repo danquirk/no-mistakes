@@ -560,8 +560,8 @@ func TestIsolateHooksPath_SkipsIsolationWhenWorktreeConfigUnsupported(t *testing
 		t.Fatal(err)
 	}
 
-	originalRunGit := runGit
-	runGit = func(_ context.Context, dir string, args ...string) (string, error) {
+	originalRunBareGit := runBareGit
+	runBareGit = func(_ context.Context, dir string, args ...string) (string, error) {
 		t.Helper()
 		if dir != bare {
 			t.Fatalf("run dir = %q, want %q", dir, bare)
@@ -569,9 +569,9 @@ func TestIsolateHooksPath_SkipsIsolationWhenWorktreeConfigUnsupported(t *testing
 		if len(args) >= 3 && args[0] == "config" && args[1] == "--worktree" {
 			return "", exec.ErrNotFound
 		}
-		return originalRunGit(ctx, dir, args...)
+		return originalRunBareGit(ctx, dir, args...)
 	}
-	defer func() { runGit = originalRunGit }()
+	defer func() { runBareGit = originalRunBareGit }()
 
 	if err := IsolateHooksPath(ctx, bare); err != nil {
 		t.Fatalf("IsolateHooksPath should tolerate missing --worktree support: %v", err)
@@ -609,8 +609,8 @@ func TestIsolateHooksPath_LinkedWorktreeResolvesRepoForCLI(t *testing.T) {
 	// The gate records origin = upstream so worktrees can resolve the repo
 	// (gate.provisionGate does this for exactly this reason).
 	const upstream = "https://github.com/test/repo.git"
-	if err := EnsureRemote(ctx, bare, "origin", upstream); err != nil {
-		t.Fatalf("EnsureRemote: %v", err)
+	if err := EnsureRemoteBare(ctx, bare, "origin", upstream); err != nil {
+		t.Fatalf("EnsureRemoteBare: %v", err)
 	}
 	if err := IsolateHooksPath(ctx, bare); err != nil {
 		t.Fatalf("IsolateHooksPath: %v", err)
@@ -657,7 +657,7 @@ func TestIsolateHooksPath_LinkedWorktreeResolvesRepoForCLI(t *testing.T) {
 // worktree. A worktree that reports core.bare=true is treated as bare by
 // stricter git, so git - and therefore gh - fail to operate from it, and that
 // worktree is the CI step's cwd. The old-git path is simulated deterministically
-// via the runGit stub so this reproduces the reporter's config state on any git.
+// via the runBareGit stub so this reproduces the reporter's config state on any git.
 func TestLinkedWorktreeLeaksCoreBareWithoutRelocation(t *testing.T) {
 	ctx := context.Background()
 	base := t.TempDir()
@@ -670,14 +670,14 @@ func TestLinkedWorktreeLeaksCoreBareWithoutRelocation(t *testing.T) {
 	// Make `config --worktree` look unsupported so IsolateHooksPath takes its
 	// best-effort no-op path, leaving core.bare=true in shared config - exactly
 	// the state an old git leaves on the reporter's host.
-	originalRunGit := runGit
-	runGit = func(_ context.Context, dir string, args ...string) (string, error) {
+	originalRunBareGit := runBareGit
+	runBareGit = func(_ context.Context, dir string, args ...string) (string, error) {
 		if len(args) >= 2 && args[0] == "config" && args[1] == "--worktree" {
 			return "", exec.ErrNotFound
 		}
-		return originalRunGit(ctx, dir, args...)
+		return originalRunBareGit(ctx, dir, args...)
 	}
-	defer func() { runGit = originalRunGit }()
+	defer func() { runBareGit = originalRunBareGit }()
 
 	if err := IsolateHooksPath(ctx, bare); err != nil {
 		t.Fatalf("IsolateHooksPath should no-op without worktree support: %v", err)

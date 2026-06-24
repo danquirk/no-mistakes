@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os/exec"
 	"strconv"
+	"syscall"
 	"testing"
 )
 
@@ -36,11 +37,24 @@ func TestIsTaskkillAlreadyGone(t *testing.T) {
 	}
 }
 
+func TestConfigureShellCommandHidesWindow(t *testing.T) {
+	cmd := exec.Command("does-not-need-to-exist.exe")
+	ConfigureShellCommand(cmd)
+	if cmd.SysProcAttr == nil {
+		t.Fatal("ConfigureShellCommand did not assign SysProcAttr")
+	}
+	if !cmd.SysProcAttr.HideWindow {
+		t.Fatal("HideWindow = false, want true")
+	}
+}
+
 // exitCodeErr runs `cmd /c exit N` and returns the resulting *exec.ExitError so
 // the helper is exercised against a real ProcessState with the chosen code.
 func exitCodeErr(t *testing.T, code int) error {
 	t.Helper()
-	err := exec.Command("cmd", "/c", "exit", strconv.Itoa(code)).Run()
+	cmd := exec.Command("cmd", "/c", "exit", strconv.Itoa(code))
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	err := cmd.Run()
 	if err == nil {
 		t.Fatalf("expected exit %d to yield a nonzero-run error", code)
 	}

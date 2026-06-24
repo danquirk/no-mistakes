@@ -135,6 +135,7 @@ type AgentName string
 const (
 	AgentAuto     AgentName = "auto"
 	AgentClaude   AgentName = "claude"
+	AgentCopilot  AgentName = "copilot"
 	AgentCodex    AgentName = "codex"
 	AgentRovoDev  AgentName = "rovodev"
 	AgentOpenCode AgentName = "opencode"

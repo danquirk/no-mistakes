@@ -31,6 +31,7 @@ func TestAgentPath_DefaultBinaries(t *testing.T) {
 		want  string
 	}{
 		{types.AgentClaude, "claude"},
+		{types.AgentCopilot, "copilot"},
 		{types.AgentCodex, "codex"},
 		{types.AgentRovoDev, "acli"},
 		{types.AgentOpenCode, "opencode"},
@@ -140,7 +141,7 @@ acp_registry_overrides:
 
 func TestResolveAgent_AutoPicksFirstAvailable(t *testing.T) {
 	cfg := &Config{Agent: types.AgentAuto}
-	// Simulate: claude not found, codex found
+	// Simulate: claude and copilot not found, codex found
 	err := cfg.ResolveAgent(context.Background(), func(bin string) (string, error) {
 		if bin == "codex" {
 			return "/usr/bin/codex", nil
@@ -152,6 +153,22 @@ func TestResolveAgent_AutoPicksFirstAvailable(t *testing.T) {
 	}
 	if cfg.Agent != types.AgentCodex {
 		t.Errorf("agent = %q, want %q", cfg.Agent, types.AgentCodex)
+	}
+}
+
+func TestResolveAgent_AutoPicksCopilotAfterClaude(t *testing.T) {
+	cfg := &Config{Agent: types.AgentAuto}
+	err := cfg.ResolveAgent(context.Background(), func(bin string) (string, error) {
+		if bin == "copilot" {
+			return "/usr/bin/copilot", nil
+		}
+		return "", &exec.Error{Name: bin, Err: exec.ErrNotFound}
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Agent != types.AgentCopilot {
+		t.Errorf("agent = %q, want %q", cfg.Agent, types.AgentCopilot)
 	}
 }
 
@@ -231,7 +248,7 @@ func TestResolveAgent_AutoSkipsRovoDevWithoutSubcommand(t *testing.T) {
 
 	err := cfg.ResolveAgent(context.Background(), func(bin string) (string, error) {
 		switch bin {
-		case "claude", "codex", "opencode", "pi":
+		case "claude", "copilot", "codex", "opencode", "pi":
 			return "", &exec.Error{Name: bin, Err: exec.ErrNotFound}
 		case "acli":
 			return "/usr/bin/acli", nil
@@ -263,7 +280,7 @@ func TestResolveAgent_AutoReturnsRovoDevProbeExitError(t *testing.T) {
 
 	err := cfg.ResolveAgent(context.Background(), func(bin string) (string, error) {
 		switch bin {
-		case "claude", "codex", "opencode", "pi":
+		case "claude", "copilot", "codex", "opencode", "pi":
 			return "", &exec.Error{Name: bin, Err: exec.ErrNotFound}
 		case "acli":
 			return script, nil
@@ -364,7 +381,7 @@ func TestResolveAgent_AutoPassesContextToRovoDevProbe(t *testing.T) {
 
 	err := cfg.ResolveAgent(ctx, func(bin string) (string, error) {
 		switch bin {
-		case "claude", "codex", "opencode", "pi":
+		case "claude", "copilot", "codex", "opencode", "pi":
 			return "", &exec.Error{Name: bin, Err: exec.ErrNotFound}
 		case "acli":
 			return "/usr/bin/acli", nil

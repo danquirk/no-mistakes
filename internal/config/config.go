@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kunchenguid/no-mistakes/internal/process"
 	"github.com/kunchenguid/no-mistakes/internal/types"
 	"gopkg.in/yaml.v3"
 )
@@ -156,7 +157,7 @@ type Intent struct {
 const defaultConfigYAML = `# no-mistakes global configuration
 
 # Agent to use for code generation
-# Options: auto, claude, codex, rovodev, opencode, pi, acp:<target>
+# Options: auto, claude, copilot, codex, rovodev, opencode, pi, acp:<target>
 # "auto" detects the first available native agent on your system
 # Use acp:<target> to run an optional user-installed acpx target, for example acp:gemini
 agent: auto
@@ -178,10 +179,14 @@ log_level: info
 # Override native agent binary paths (optional)
 # agent_path_override:
 #   claude: /usr/local/bin/claude
+#   copilot: /usr/local/bin/copilot
 #   codex: /opt/codex
 
 # Extra native agent CLI flags (optional, global only)
 # agent_args_override:
+#   copilot:
+#     - --model
+#     - gpt-5.4
 #   codex:
 #     - -m
 #     - gpt-5.4
@@ -221,6 +226,7 @@ intent:
 // defaultBinary maps agent names to their default binary names.
 var defaultBinary = map[types.AgentName]string{
 	types.AgentClaude:   "claude",
+	types.AgentCopilot:  "copilot",
 	types.AgentCodex:    "codex",
 	types.AgentRovoDev:  "acli",
 	types.AgentOpenCode: "opencode",
@@ -230,6 +236,7 @@ var defaultBinary = map[types.AgentName]string{
 // agentProbeOrder is the priority order for auto-detecting agents.
 var agentProbeOrder = []types.AgentName{
 	types.AgentClaude,
+	types.AgentCopilot,
 	types.AgentCodex,
 	types.AgentOpenCode,
 	types.AgentRovoDev,
@@ -250,6 +257,7 @@ var probeRovoDevSupport = func(ctx context.Context, bin string) (bool, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, bin, "rovodev", "--help")
+	process.HideWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		return true, nil
@@ -347,6 +355,7 @@ func (c *Config) AgentArgs() []string {
 // agent_args_override.
 var agentArgsOverrideAgents = map[string]bool{
 	string(types.AgentClaude):   true,
+	string(types.AgentCopilot):  true,
 	string(types.AgentCodex):    true,
 	string(types.AgentRovoDev):  true,
 	string(types.AgentOpenCode): true,
@@ -363,6 +372,23 @@ var reservedAgentArgs = map[string]map[string]bool{
 		"--verbose":       true,
 		"--output-format": true,
 		"--json-schema":   true,
+	},
+	string(types.AgentCopilot): {
+		"-p":                 true,
+		"--prompt":           true,
+		"--allow-all":        true,
+		"--allow-all-tools":  true,
+		"--allow-all-paths":  true,
+		"--allow-all-urls":   true,
+		"--yolo":             true,
+		"--silent":           true,
+		"--no-ask-user":      true,
+		"--stream":           true,
+		"--output-format":    true,
+		"--no-auto-update":   true,
+		"--no-remote":        true,
+		"--no-remote-export": true,
+		"--log-level":        true,
 	},
 	string(types.AgentCodex): {
 		"exec":    true,
@@ -392,7 +418,7 @@ var reservedAgentArgs = map[string]map[string]bool{
 func validateAgentArgsOverride(override map[string][]string) error {
 	for name, args := range override {
 		if !agentArgsOverrideAgents[name] {
-			return fmt.Errorf("invalid agent name in agent_args_override: %q (valid: claude, codex, rovodev, opencode, pi)", name)
+			return fmt.Errorf("invalid agent name in agent_args_override: %q (valid: claude, copilot, codex, rovodev, opencode, pi)", name)
 		}
 		reserved := reservedAgentArgs[name]
 		for i, arg := range args {

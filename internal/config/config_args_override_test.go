@@ -18,6 +18,9 @@ agent_args_override:
   claude:
     - --permission-mode
     - acceptEdits
+  copilot:
+    - --model
+    - gpt-5.4
   codex:
     - -m
     - gpt-5.4
@@ -40,6 +43,7 @@ agent_args_override:
 
 	cases := map[string][]string{
 		"claude":   {"--permission-mode", "acceptEdits"},
+		"copilot":  {"--model", "gpt-5.4"},
 		"codex":    {"-m", "gpt-5.4", "--full-auto"},
 		"rovodev":  {"--profile", "work"},
 		"opencode": {"--model", "gpt-5"},
@@ -84,6 +88,13 @@ func TestLoadGlobal_AgentArgsOverride_ReservedArgsRejected(t *testing.T) {
 		{"claude", "--output-format"},
 		{"claude", "--output-format=stream-json"},
 		{"claude", "--json-schema"},
+		{"copilot", "-p"},
+		{"copilot", "--prompt"},
+		{"copilot", "--allow-all"},
+		{"copilot", "--silent"},
+		{"copilot", "--no-ask-user"},
+		{"copilot", "--stream"},
+		{"copilot", "--output-format"},
 		{"codex", "exec"},
 		{"codex", "--json"},
 		{"codex", "--color"},

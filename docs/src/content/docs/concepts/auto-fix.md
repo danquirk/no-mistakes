@@ -67,7 +67,7 @@ Agent-driven findings now use an `action` field instead of `requires_human_revie
 - `ask-user` - intent-sensitive or ambiguous issues that pause for approval instead of entering the normal auto-fix loop
 - `no-op` - informational notes that do not need a fix
 
-`ask-user` is meant for findings that need human judgment - for example, questioning an intentional product or design choice, arguing that an intentional addition, removal, or guard should be undone, or reporting that the test step could not produce enough evidence for the available intent. Routine correctness, reliability, or security fixes still stay `auto-fix` even if the smallest fix reintroduces a small amount of previously deleted logic. Agents driving the AXI skill should relay `ask-user` findings to the user unless they have explicit `--yes` consent to resolve gates unattended.
+`ask-user` is meant for findings that need human judgment - for example, questioning an intentional product or design choice, arguing that an intentional addition, removal, or guard should be undone, or reporting that the test step could not produce enough evidence for the available intent. Routine correctness, reliability, or security fixes still stay `auto-fix` even if the smallest fix reintroduces a small amount of previously deleted logic. Agents driving the gate skill should relay `ask-user` findings to the user unless they have explicit `--yes` consent to resolve gates unattended.
 In the TUI, yolo mode is an explicit override that auto-resolves paused steps by treating `auto-fix` and `ask-user` findings as consent to run one fix round.
 Steps with only `no-op` findings are approved as-is.
 
@@ -78,19 +78,19 @@ Documentation findings use the same approval UI, but the `document` step treats 
 
 ## User-triggered fixes
 
-When the pipeline pauses for approval, you can manually trigger a fix from the TUI or AXI interface:
+When the pipeline pauses for approval, you can manually trigger a fix from the TUI or gate interface:
 
 1. The findings panel shows all findings with checkboxes
 2. Toggle individual findings with `space`, or use `A` (all) / `N` (none)
 3. Optionally press `e` to attach a note to the current finding, or `+` to add your own finding to the fix request
 4. Press `f` to fix the selected findings
 
-The agent receives the merged fix payload for that round: the selected agent findings, any per-finding user notes, any selected user-authored findings added from the TUI or AXI interface, and a sanitized history of previous rounds for that step.
+The agent receives the merged fix payload for that round: the selected agent findings, any per-finding user notes, any selected user-authored findings added from the TUI or gate interface, and a sanitized history of previous rounds for that step.
 That history includes which finding IDs were selected for a prior fix attempt, which findings were left unselected by the user, and any one-line summaries from earlier fix commits.
 On follow-up review passes, that history tells the agent not to re-report user-ignored findings unless the code now presents a materially different issue.
 
 After a user-triggered fix, the step re-runs and pauses again to show you the results (`fix_review` status). You can then approve, fix again, skip, or abort.
-Yolo and AXI `--yes` approve that fix review automatically after their one fix round, so a finding that remains after the fix does not trigger an unbounded fix loop.
+Yolo and gate `--yes` approve that fix review automatically after their one fix round, so a finding that remains after the fix does not trigger an unbounded fix loop.
 
 ## Fix commits
 
@@ -110,13 +110,13 @@ The push step commits any remaining uncommitted changes with `no-mistakes: apply
 
 Each execution of a step (initial run or follow-up auto-fix run) is recorded as a "round" in the database.
 A round stores its findings, duration, any selected finding IDs and whether that selection came from the user or auto-fix filtering, the merged finding payload actually sent to the fix agent for that round, and any one-line fix summary from that execution.
-That merged payload can include per-finding user notes and user-authored findings added from the TUI or AXI interface.
+That merged payload can include per-finding user notes and user-authored findings added from the TUI or gate interface.
 The PR body's deterministic risk assessment, testing, and pipeline sections are built from these rounds, giving reviewers visibility into test results, review risk, what was fixed, and how many attempts it took.
 In PR pipeline details, auto-fix rounds are rendered as an issue -> fix -> verification narrative instead of a round-numbered log: each fix summary is followed by either a successful re-check or the findings still open after that fix.
 
 Round trigger types:
 - `initial` - first execution
 - `auto_fix` - triggered by the automatic fix loop
-- `auto_fix` - also used when you press `f` in the TUI or use `no-mistakes axi respond --action fix` to run a follow-up fix
+- `auto_fix` - also used when you press `f` in the TUI or use `no-mistakes gate respond --action fix` to run a follow-up fix
 
 Legacy `user_fix` rounds are still rendered as `auto-fix` in PR summaries for backward compatibility.

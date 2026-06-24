@@ -406,7 +406,7 @@ func assertSkillInstalled(t *testing.T, h *Harness) {
 		for _, want := range []string{
 			"name: no-mistakes",
 			"user-invocable: true",
-			"no-mistakes axi run",
+			"no-mistakes gate run",
 		} {
 			if !strings.Contains(content, want) {
 				t.Errorf("%s missing %q", rel, want)

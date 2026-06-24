@@ -6,8 +6,19 @@ import (
 	"strings"
 )
 
+const (
+	copilotPromptWrapperPrefix = "Read the complete no-mistakes task instructions from this file,"
+	copilotPromptFileMarker    = "File: "
+)
+
 func runCopilot(args []string, scenario *Scenario) int {
 	prompt := extractCopilotPrompt(args)
+	var err error
+	prompt, err = resolveCopilotPrompt(prompt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fakeagent: copilot prompt: %v\n", err)
+		return 1
+	}
 	logInvocation("copilot", prompt, args)
 
 	action := scenario.Match(prompt)
@@ -34,4 +45,27 @@ func extractCopilotPrompt(args []string) string {
 		}
 	}
 	return ""
+}
+
+func resolveCopilotPrompt(prompt string) (string, error) {
+	path, ok := referencedCopilotPromptFile(prompt)
+	if !ok {
+		return prompt, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read referenced prompt file %q: %w", path, err)
+	}
+	return string(data), nil
+}
+
+func referencedCopilotPromptFile(prompt string) (string, bool) {
+	if !strings.HasPrefix(prompt, copilotPromptWrapperPrefix) {
+		return "", false
+	}
+	idx := strings.LastIndex(prompt, copilotPromptFileMarker)
+	if idx < 0 {
+		return "", false
+	}
+	return strings.TrimSpace(prompt[idx+len(copilotPromptFileMarker):]), true
 }
